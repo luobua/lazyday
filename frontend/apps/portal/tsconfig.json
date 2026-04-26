@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "allowJs": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*"],
+      "@lazyday/types": ["../../packages/types/src"],
+      "@lazyday/types/*": ["../../packages/types/src/*"],
+      "@lazyday/utils": ["../../packages/utils/src"],
+      "@lazyday/utils/*": ["../../packages/utils/src/*"],
+      "@lazyday/api-client": ["../../packages/api-client/src"],
+      "@lazyday/api-client/*": ["../../packages/api-client/src/*"],
+      "@lazyday/ui": ["../../packages/ui/src"],
+      "@lazyday/ui/*": ["../../packages/ui/src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

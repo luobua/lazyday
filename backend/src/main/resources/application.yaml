@@ -1,0 +1,66 @@
+fan:
+  service:
+    domain-host: http://127.0.0.1:${server.port}
+    context-path-v1: /api/lazyday/v1
+    context-path-v2: /api/lazyday/v2
+    open-context-path-v1: /api/open/v1
+    encryption-key: xunwei-key
+    access-key: xunwei-access-key
+    secret-key: xunwei-secret-key
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+database:
+  dialect: postgresql
+  type: postgresql
+  host: 127.0.0.1
+  port: 5432
+  dbname: lazyday
+  username: postgres
+  password: postgres
+  options: "?useUnicode=true&&stringtype=unspecified&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowMultiQueries=true&allowPublicKeyRetrieval=true"
+  driver: org.postgresql.Driver
+spring:
+  application:
+    name: lazyday
+  datasource:
+    url: jdbc:${database.dialect}://${database.host}:${database.port}/${database.dbname}${database.options}
+    username: ${database.username}
+    password: ${database.password}
+    driver-class-name: ${database.driver}
+  r2dbc:
+    url: r2dbc:${database.dialect}://${database.host}:${database.port}/${database.dbname}${database.options}
+    username: ${database.username}
+    password: ${database.password}
+    pool:
+      enabled: true
+      initial-size: 10
+      max-size: 100
+      max-idle-time: 60s
+      max-acquire-time: 10s
+      max-create-connection-time: 5s
+  flyway:
+    url: jdbc:${database.dialect}://${database.host}:${database.port}/${database.dbname}${database.options}
+    user: ${database.username}
+    password: ${database.password}
+    enabled: true
+    table: t_flyway_center_history   #flyway_schema_history，用于记录所有的版本变化记录
+    baseline-on-migrate: true
+    validate-on-migrate: false
+    out-of-order: true
+    locations:
+      - classpath:db/migration
+      - classpath:db/migration-${database.dialect}
+  ai:
+    openai:
+      api-key: sk-0cb1762acd3c4fcab02a247ad41cd5cb
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/
+      chat:
+        options:
+          model: qwen3.6-max-preview
+      embedding:
+        options:
+          model: text-embedding-v4 # 必须配置 Embedding 模型
+          dimensions: 1536 # 维度需与向量数据库表结构一致
+  jackson:
+    date-format: ${fan.service.date-format}
+    time-zone: ${fan.service.time-zone}

@@ -1,0 +1,21 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# next.js
+.next/
+out/
+
+# production
+build/
+dist/
+
+# misc
+.DS_Store
+*.pem
+.env*.local
+npm-debug.log*
+pnpm-debug.log*
+
+# turbo
+.turbo
