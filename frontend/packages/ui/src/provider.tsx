@@ -14,11 +14,13 @@ export interface LazydayProviderProps {
 
 /**
  * 全局 Provider：Ant Design 主题 + 国际化
+ *
+ * Portal 默认使用 Dark Mode OLED 主题
  */
 export function LazydayProvider({
   children,
-  dark = false,
-  primaryColor = '#1677ff',
+  dark = true,
+  primaryColor = '#3B82F6',
 }: LazydayProviderProps) {
   return (
     <ConfigProvider
@@ -27,7 +29,13 @@ export function LazydayProvider({
         algorithm: dark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
         token: {
           colorPrimary: primaryColor,
+          colorBgBase: dark ? '#0F172A' : undefined,
+          colorBgContainer: dark ? '#1E293B' : undefined,
+          colorText: dark ? '#F8FAFC' : undefined,
+          colorTextSecondary: dark ? '#94A3B8' : undefined,
+          colorSuccess: '#22C55E',
           borderRadius: 6,
+          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
         },
       }}
     >

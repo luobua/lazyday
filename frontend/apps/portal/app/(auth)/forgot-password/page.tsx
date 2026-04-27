@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Form, Input, Button, Typography, message, Space } from 'antd';
+import { Form, Input, Button, Typography, Space, App } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 
@@ -10,6 +10,7 @@ const { Text, Title } = Typography;
 export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const { message } = App.useApp();
 
   const onFinish = async (values: { email: string }) => {
     setLoading(true);
@@ -33,7 +34,7 @@ export default function ForgotPasswordPage() {
           请查收邮箱中的重置密码链接。如果没有收到，请检查垃圾邮件或重新发送。
         </Text>
         <div style={{ marginTop: 16 }}>
-          <Link href="/portal/login">返回登录</Link>
+          <Link href="/login">返回登录</Link>
         </div>
       </div>
     );
@@ -58,7 +59,7 @@ export default function ForgotPasswordPage() {
           </Button>
         </Form.Item>
         <Space style={{ width: '100%', justifyContent: 'center' }}>
-          <Link href="/portal/login">返回登录</Link>
+          <Link href="/login">返回登录</Link>
         </Space>
       </Form>
     </>

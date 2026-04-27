@@ -6,7 +6,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.UUID;
 
 /**
  * <p>描述: [类型描述] </p>
@@ -22,10 +21,10 @@ public class UserAggregation implements BatchInsertAggregation {
     @Setter
     private UserEntity userEntity;
     @Setter(value = AccessLevel.PROTECTED)
-    private UUID id;
+    private Long id;
 
 
-    public UUID getId() {
+    public Long getId() {
         if (id != null) {
             return id;
         }

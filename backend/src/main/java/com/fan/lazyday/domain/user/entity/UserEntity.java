@@ -9,17 +9,12 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
-import org.springframework.data.relational.core.query.Criteria;
-import org.springframework.data.relational.core.query.Query;
-import org.springframework.data.relational.core.query.Update;
 import org.springframework.data.util.Lazy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
-import java.time.Instant;
-import java.util.Collections;
-import java.util.UUID;
 
 
 /**
@@ -31,11 +26,13 @@ import java.util.UUID;
  * 2024/09/12 11:03 fan 创建
  */
 @Getter
-public class UserEntity extends Entity<UUID> {
+public class UserEntity extends Entity<Long> {
 
     public final static Class<User> PO_CLASS = User.class;
 
     public final static Lazy<Context> CTX = SpringContext.getLazyBean(Context.class);
+
+    private static final BCryptPasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
 
     protected UserEntity() {
     }
@@ -43,17 +40,33 @@ public class UserEntity extends Entity<UUID> {
     @Setter(AccessLevel.PROTECTED)
     private User delegate;
 
-    public UUID getId() {
+    public Long getId() {
         if (delegate != null) {
             return delegate.getId();
         }
         return null;
     }
 
+    public static UserEntity fromPo(User po) {
+        UserEntity entity = new UserEntity();
+        entity.setDelegate(po);
+        return entity;
+    }
+
+    public static Mono<String> hashPassword(String rawPassword) {
+        return Mono.fromCallable(() -> PASSWORD_ENCODER.encode(rawPassword))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public Mono<Boolean> verifyPassword(String rawPassword) {
+        return Mono.fromCallable(() -> PASSWORD_ENCODER.matches(rawPassword, delegate.getPasswordHash()))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
     @Getter
     @Component
     @AllArgsConstructor
-    public static class Context  {
+    public static class Context {
         private final UserRepository repository;
         private final R2dbcEntityTemplate entityTemplate;
     }

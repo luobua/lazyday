@@ -1,64 +1,97 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Card, Table, Button, Tag, Space, Modal, Form, Input, Typography, message, Tooltip, Popconfirm } from 'antd';
-import { PlusOutlined, CopyOutlined, ReloadOutlined, StopOutlined, PlayCircleOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
+import { Card, Table, Button, Tag, Space, Modal, Form, Input, Select, Typography, Tooltip, Popconfirm, Empty, Alert, Skeleton, App } from 'antd';
+import { PlusOutlined, CopyOutlined, ReloadOutlined, StopOutlined, PlayCircleOutlined, DeleteOutlined, EyeOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { PageHeader } from '@lazyday/ui';
-import type { AppKeyInfo } from '@lazyday/types';
-import { formatTimestamp, copyToClipboard, maskAppKey } from '@lazyday/utils';
+import { copyToClipboard } from '@lazyday/utils';
+import {
+  useCredentials,
+  useCreateCredential,
+  useDisableCredential,
+  useEnableCredential,
+  useRotateSecret,
+  useDeleteCredential,
+} from '@/hooks/use-credentials';
 
 const { Text, Paragraph } = Typography;
 
-// Mock 数据
-const mockAppKeys: AppKeyInfo[] = [
-  {
-    id: 1,
-    name: '生产环境',
-    app_key: 'ak_prod_8f3a2b1c4d5e6f7a8b9c0d1e2f3a4b5c',
-    secret_key_masked: 'sk_****4b5c',
-    status: 'active',
-    scopes: ['ai:chat', 'ai:tts', 'ai:asr'],
-    created_at: '2026-01-15T08:00:00Z',
-    updated_at: '2026-04-20T14:30:00Z',
-  },
-  {
-    id: 2,
-    name: '测试环境',
-    app_key: 'ak_test_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d',
-    secret_key_masked: 'sk_****5c6d',
-    status: 'active',
-    scopes: ['ai:chat'],
-    created_at: '2026-03-01T10:00:00Z',
-    updated_at: '2026-04-25T09:15:00Z',
-  },
-  {
-    id: 3,
-    name: '旧版 SDK',
-    app_key: 'ak_old_9z8y7x6w5v4u3t2s1r0q9p8o7n6m5l4k',
-    secret_key_masked: 'sk_****5l4k',
-    status: 'disabled',
-    scopes: ['ai:chat'],
-    created_at: '2025-10-01T12:00:00Z',
-    updated_at: '2026-04-01T16:00:00Z',
-  },
+const SCOPE_OPTIONS = [
+  { label: 'AI 对话', value: 'ai:chat' },
+  { label: 'AI 语音合成', value: 'ai:tts' },
+  { label: 'AI 语音识别', value: 'ai:asr' },
 ];
 
+interface SecretKeyModalData {
+  appKey: string;
+  secretKey: string;
+}
+
 export default function CredentialsPage() {
-  const [appKeys] = useState(mockAppKeys);
+  const { data: appKeys, isLoading } = useCredentials();
+  const createMutation = useCreateCredential();
+  const disableMutation = useDisableCredential();
+  const enableMutation = useEnableCredential();
+  const rotateMutation = useRotateSecret();
+  const deleteMutation = useDeleteCredential();
+
   const [createOpen, setCreateOpen] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [selectedKey, setSelectedKey] = useState<AppKeyInfo | null>(null);
+  const [secretModal, setSecretModal] = useState<SecretKeyModalData | null>(null);
   const [form] = Form.useForm();
+  const { message } = App.useApp();
+
+  const handleCreate = async () => {
+    try {
+      const values = await form.validateFields();
+      const result = await createMutation.mutateAsync({
+        name: values.name,
+        scopes: values.scopes,
+      });
+      setCreateOpen(false);
+      form.resetFields();
+      setSecretModal({
+        appKey: result.app_key,
+        secretKey: result.secret_key,
+      });
+    } catch {
+      // validation error
+    }
+  };
+
+  const handleRotate = async (id: number) => {
+    try {
+      const result = await rotateMutation.mutateAsync(id);
+      setSecretModal({
+        appKey: '',
+        secretKey: result.secret_key,
+      });
+    } catch (err: unknown) {
+      message.error((err as Error).message || '轮换失败');
+    }
+  };
+
+  const handleCloseSecretModal = () => {
+    Modal.confirm({
+      title: '确定已保存 SecretKey？',
+      content: '关闭后无法再次查看',
+      icon: <ExclamationCircleOutlined />,
+      okText: '已保存，关闭',
+      cancelText: '返回',
+      onOk: () => setSecretModal(null),
+    });
+  };
 
   const columns = [
     {
       title: '名称',
       dataIndex: 'name',
       key: 'name',
-      render: (name: string, record: AppKeyInfo) => (
+      render: (name: string, record: { status: string }) => (
         <Space>
           <Text strong>{name}</Text>
-          {record.status === 'disabled' && <Tag color="error">已禁用</Tag>}
+          <Tag color={record.status === 'ACTIVE' ? 'success' : 'error'}>
+            {record.status === 'ACTIVE' ? '活跃' : '已禁用'}
+          </Tag>
         </Space>
       ),
     },
@@ -68,9 +101,7 @@ export default function CredentialsPage() {
       key: 'app_key',
       render: (key: string) => (
         <Space>
-          <Text code style={{ fontSize: 12 }}>
-            {maskAppKey(key)}
-          </Text>
+          <Text code style={{ fontSize: 12 }}>{key}</Text>
           <Tooltip title="复制 AppKey">
             <Button
               type="text"
@@ -89,48 +120,57 @@ export default function CredentialsPage() {
       title: '权限范围',
       dataIndex: 'scopes',
       key: 'scopes',
-      render: (scopes: string[]) => (
+      render: (scopes: string) => (
         <Space wrap>
-          {scopes.map((s) => (
-            <Tag key={s} color="blue">{s}</Tag>
+          {scopes?.split(',').filter(Boolean).map((s: string) => (
+            <Tag key={s} color="blue">{s.trim()}</Tag>
           ))}
         </Space>
       ),
     },
     {
       title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      dataIndex: 'create_time',
+      key: 'create_time',
       width: 180,
-      render: (t: string) => formatTimestamp(t),
+      render: (t: string) => t ? new Date(t).toLocaleString('zh-CN') : '-',
     },
     {
       title: '操作',
       key: 'actions',
-      width: 260,
-      render: (_: unknown, record: AppKeyInfo) => (
+      width: 300,
+      render: (_: unknown, record: { id: number; status: string }) => (
         <Space>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => { setSelectedKey(record); setDetailOpen(true); }}
-          >
-            详情
-          </Button>
-          {record.status === 'active' ? (
-            <Popconfirm title="确定禁用此 AppKey？" onConfirm={() => message.info('禁用功能待 Backend 就绪')}>
+          {record.status === 'ACTIVE' ? (
+            <Popconfirm
+              title="确定禁用此 AppKey？"
+              description="禁用后使用该 Key 的请求将被拒绝"
+              onConfirm={() => disableMutation.mutate(record.id)}
+            >
               <Button type="link" size="small" icon={<StopOutlined />} danger>禁用</Button>
             </Popconfirm>
           ) : (
-            <Button type="link" size="small" icon={<PlayCircleOutlined />} style={{ color: '#52c41a' }}>
-              启用
-            </Button>
+            <Popconfirm
+              title="确定启用此 AppKey？"
+              onConfirm={() => enableMutation.mutate(record.id)}
+            >
+              <Button type="link" size="small" icon={<PlayCircleOutlined />} style={{ color: '#52c41a' }}>
+                启用
+              </Button>
+            </Popconfirm>
           )}
-          <Button type="link" size="small" icon={<ReloadOutlined />}>
-            轮换密钥
-          </Button>
-          <Popconfirm title="确定删除此 AppKey？删除后不可恢复" onConfirm={() => message.info('删除功能待 Backend 就绪')}>
+          <Popconfirm
+            title="确定轮换密钥？"
+            description="旧密钥将在 24 小时后失效"
+            onConfirm={() => handleRotate(record.id)}
+          >
+            <Button type="link" size="small" icon={<ReloadOutlined />}>轮换密钥</Button>
+          </Popconfirm>
+          <Popconfirm
+            title="确定删除此 AppKey？"
+            description="删除后不可恢复"
+            onConfirm={() => deleteMutation.mutate(record.id)}
+          >
             <Button type="link" size="small" icon={<DeleteOutlined />} danger>删除</Button>
           </Popconfirm>
         </Space>
@@ -151,12 +191,22 @@ export default function CredentialsPage() {
       />
 
       <Card variant="borderless">
-        <Table
-          dataSource={appKeys}
-          columns={columns}
-          rowKey="id"
-          pagination={false}
-        />
+        {isLoading ? (
+          <Skeleton active paragraph={{ rows: 4 }} />
+        ) : !appKeys || appKeys.length === 0 ? (
+          <Empty description="还没有 AppKey">
+            <Button type="primary" onClick={() => setCreateOpen(true)}>
+              创建第一个 AppKey
+            </Button>
+          </Empty>
+        ) : (
+          <Table
+            dataSource={appKeys}
+            columns={columns}
+            rowKey="id"
+            pagination={false}
+          />
+        )}
       </Card>
 
       {/* 创建 AppKey 弹窗 */}
@@ -164,20 +214,19 @@ export default function CredentialsPage() {
         title="创建 AppKey"
         open={createOpen}
         onCancel={() => { setCreateOpen(false); form.resetFields(); }}
-        onOk={() => {
-          form.validateFields().then(() => {
-            message.success('创建功能将在 Backend 就绪后启用');
-            setCreateOpen(false);
-            form.resetFields();
-          });
-        }}
+        onOk={handleCreate}
+        confirmLoading={createMutation.isPending}
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入 AppKey 名称' }]}>
             <Input placeholder="例如：生产环境、测试环境" />
           </Form.Item>
           <Form.Item name="scopes" label="权限范围">
-            <Input placeholder="例如：ai:chat, ai:tts（留空则默认全部权限）" />
+            <Select
+              mode="multiple"
+              placeholder="选择权限范围（留空则默认全部权限）"
+              options={SCOPE_OPTIONS}
+            />
           </Form.Item>
         </Form>
         <Paragraph type="secondary" style={{ fontSize: 12 }}>
@@ -185,27 +234,47 @@ export default function CredentialsPage() {
         </Paragraph>
       </Modal>
 
-      {/* 详情弹窗 */}
+      {/* 一次性 SecretKey 展示 */}
       <Modal
-        title="AppKey 详情"
-        open={detailOpen}
-        onCancel={() => setDetailOpen(false)}
-        footer={null}
+        title="请保存您的密钥"
+        open={!!secretModal}
+        onCancel={handleCloseSecretModal}
+        maskClosable={false}
+        footer={[
+          <Button key="close" type="primary" onClick={handleCloseSecretModal}>
+            我已保存，关闭
+          </Button>,
+        ]}
       >
-        {selectedKey && (
+        {secretModal && (
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <div><Text type="secondary">名称：</Text><Text strong>{selectedKey.name}</Text></div>
-            <div><Text type="secondary">状态：</Text><Tag color={selectedKey.status === 'active' ? 'success' : 'error'}>{selectedKey.status === 'active' ? '活跃' : '已禁用'}</Tag></div>
-            <div>
-              <Text type="secondary">AppKey：</Text>
-              <Text code copyable>{selectedKey.app_key}</Text>
-            </div>
+            <Alert
+              type="warning"
+              message="SecretKey 仅显示一次，关闭后无法再次查看，请立即复制并妥善保存。"
+              showIcon
+            />
+            {secretModal.appKey && (
+              <div>
+                <Text type="secondary">AppKey：</Text>
+                <Paragraph
+                  code
+                  copyable
+                  style={{ fontFamily: "'Fira Code', monospace", fontSize: 13 }}
+                >
+                  {secretModal.appKey}
+                </Paragraph>
+              </div>
+            )}
             <div>
               <Text type="secondary">SecretKey：</Text>
-              <Text code>{selectedKey.secret_key_masked}</Text>
+              <Paragraph
+                code
+                copyable
+                style={{ fontFamily: "'Fira Code', monospace", fontSize: 13 }}
+              >
+                {secretModal.secretKey}
+              </Paragraph>
             </div>
-            <div><Text type="secondary">权限：</Text><Space wrap>{selectedKey.scopes.map(s => <Tag key={s}>{s}</Tag>)}</Space></div>
-            <div><Text type="secondary">创建时间：</Text><Text>{formatTimestamp(selectedKey.created_at)}</Text></div>
           </Space>
         )}
       </Modal>

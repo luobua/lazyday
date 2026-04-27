@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const PUBLIC_PATHS = ['/admin/login'];
+// 有 basePath 时，Next.js matcher 已经匹配了 /admin/:path*
+// pathname 是去掉 basePath 后的路径（如 /login、/overview）
+const PUBLIC_PATHS = ['/login'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (!pathname.startsWith('/admin')) {
-    return NextResponse.next();
-  }
-
+  // 静态资源放行
   if (
     pathname.includes('/_next') ||
     pathname.includes('/api') ||
@@ -19,21 +18,21 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // 公开页面放行
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  const token = request.cookies.get('admin_access_token')?.value;
+  // 检查登录态（cookie 名与后端一致：access_token）
+  const token = request.cookies.get('access_token')?.value;
 
   if (!token) {
-    const loginUrl = new URL('/admin/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

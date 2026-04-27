@@ -24,10 +24,13 @@ public class ServiceProperties implements InitializingBean {
     private String domainHost;
     private String accessKey;
     private String secretKey;
+    private String encryptionKey;
     private String contextPathV1;
     private String contextPathV2;
     private String openContextPathV1;
     private String visitorContextPathV1;
+    private String portalContextPathV1;
+    private String adminContextPathV1;
 
     @Override
     public void afterPropertiesSet() throws Exception {

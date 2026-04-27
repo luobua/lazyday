@@ -9,7 +9,6 @@ import org.springframework.data.relational.core.mapping.Table;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -20,7 +19,7 @@ public class User extends BaseAllUserTime implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @Id
-    private UUID id;
+    private Long id;
     /**
      * 名称
      */
@@ -29,4 +28,11 @@ public class User extends BaseAllUserTime implements Serializable {
      * 版本
      */
     public Long version;
+
+    private String passwordHash;
+    private String role;
+    private Long tenantId;
+    private String status;
+    private String email;
+    private String username;
 }

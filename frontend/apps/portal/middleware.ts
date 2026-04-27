@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-/**
- * Portal 路由守卫 Middleware
- *
- * JWT + HTTP-Only Cookie 认证方案：
- * - 登录成功后 Backend 设置 Set-Cookie: access_token=xxx; HttpOnly; Secure; SameSite=Strict
- * - Middleware 检查 Cookie 是否存在，未登录则重定向到登录页
- * - 公开页面（login/register/forgot-password）不拦截
- */
-const PUBLIC_PATHS = ['/portal/login', '/portal/register', '/portal/forgot-password'];
+const PORTAL_PUBLIC_PATHS = ['/login', '/register', '/forgot-password'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 仅拦截 Portal 路径
-  if (!pathname.startsWith('/portal')) {
-    return NextResponse.next();
-  }
-
-  // 排除静态资源和 API 路由
+  // Skip static resources and API routes
   if (
     pathname.includes('/_next') ||
     pathname.includes('/api') ||
@@ -29,16 +16,24 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 公开页面放行
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  // Portal public paths
+  if (PORTAL_PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
 
-  // 检查 access_token Cookie
-  const token = request.cookies.get('access_token')?.value;
+  // Root redirect
+  if (pathname === '/') {
+    const token = request.cookies.get('access_token')?.value;
+    if (token) {
+      return NextResponse.redirect(new URL('/overview', request.url));
+    }
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
 
+  // Portal protected paths
+  const token = request.cookies.get('access_token')?.value;
   if (!token) {
-    const loginUrl = new URL('/portal/login', request.url);
+    const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
   }
@@ -47,5 +42,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/portal/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

@@ -8,9 +8,9 @@ import org.springframework.data.relational.core.query.Criteria;
 import org.springframework.data.relational.core.query.Query;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.UUID;
 
 import static com.fan.lazyday.domain.user.entity.UserEntity.PO_CLASS;
 import static org.springframework.data.relational.core.query.Query.query;
@@ -28,10 +28,32 @@ import static org.springframework.data.relational.core.query.Query.query;
 public class UserRepository {
     private final R2dbcEntityTemplate r2dbcEntityTemplate;
 
-    public Flux<User> getAll(List<UUID> ids) {
+    public Flux<User> getAll(List<Long> ids) {
         Criteria criteria = Criteria
                 .where(R2dbcHelper.toFieldName(User::getId)).in(ids);
         Query query = query(criteria);
         return r2dbcEntityTemplate.select(query, PO_CLASS);
+    }
+
+    public Mono<User> insert(User user) {
+        return r2dbcEntityTemplate.insert(user);
+    }
+
+    public Mono<User> findByUsername(String username) {
+        Criteria criteria = Criteria
+                .where(R2dbcHelper.toFieldName(User::getUsername)).is(username);
+        return r2dbcEntityTemplate.selectOne(query(criteria), PO_CLASS);
+    }
+
+    public Mono<User> findByEmail(String email) {
+        Criteria criteria = Criteria
+                .where(R2dbcHelper.toFieldName(User::getEmail)).is(email);
+        return r2dbcEntityTemplate.selectOne(query(criteria), PO_CLASS);
+    }
+
+    public Mono<User> findById(Long id) {
+        Criteria criteria = Criteria
+                .where(R2dbcHelper.toFieldName(User::getId)).is(id);
+        return r2dbcEntityTemplate.selectOne(query(criteria), PO_CLASS);
     }
 }

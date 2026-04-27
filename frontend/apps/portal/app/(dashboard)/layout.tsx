@@ -19,55 +19,56 @@ import {
   BookOutlined,
 } from '@ant-design/icons';
 import { usePathname, useRouter } from 'next/navigation';
+import { useLogout } from '@/hooks/use-auth';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
 const menuItems: MenuProps['items'] = [
   {
-    key: '/portal/overview',
+    key: '/overview',
     icon: <DashboardOutlined />,
     label: '概览',
   },
   {
-    key: '/portal/credentials',
+    key: '/credentials',
     icon: <KeyOutlined />,
     label: 'AppKey 管理',
   },
   {
-    key: '/portal/logs',
+    key: '/logs',
     icon: <FileTextOutlined />,
     label: '调用日志',
   },
   {
-    key: '/portal/webhooks',
+    key: '/webhooks',
     icon: <SendOutlined />,
     label: 'Webhook',
   },
   {
-    key: '/portal/docs',
+    key: '/docs',
     icon: <BookOutlined />,
     label: 'API 文档',
   },
   { type: 'divider' },
   {
-    key: '/portal/rag',
+    key: '/rag',
     icon: <DatabaseOutlined />,
     label: 'RAG 知识库',
   },
   {
-    key: '/portal/agent',
+    key: '/agent',
     icon: <RobotOutlined />,
     label: 'Agent 配置',
   },
   {
-    key: '/portal/workflow',
+    key: '/workflow',
     icon: <ApartmentOutlined />,
     label: 'Workflow 编排',
   },
   { type: 'divider' },
   {
-    key: '/portal/settings',
+    key: '/settings',
     icon: <SettingOutlined />,
     label: '设置',
   },
@@ -78,6 +79,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const { token } = theme.useToken();
+  const logoutMutation = useLogout();
 
   const selectedKeys = [pathname];
   const openKeys: string[] = [];
@@ -87,8 +89,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const onLogout = () => {
-    // TODO: 调用 authApi.logout()
-    router.push('/portal/login');
+    logoutMutation.mutate(undefined, {
+      onSuccess: () => router.push('/login'),
+    });
   };
 
   const userMenuItems: MenuProps['items'] = [
@@ -168,7 +171,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </Dropdown>
         </Header>
-        <Content className="dashboard-content">
+        <Content className="dashboard-content" key={pathname}>
           {children}
         </Content>
       </Layout>

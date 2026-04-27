@@ -4,6 +4,8 @@ fan:
     context-path-v1: /api/lazyday/v1
     context-path-v2: /api/lazyday/v2
     open-context-path-v1: /api/open/v1
+    portal-context-path-v1: /api/portal/v1
+    admin-context-path-v1: /api/admin/v1
     encryption-key: xunwei-key
     access-key: xunwei-access-key
     secret-key: xunwei-secret-key

@@ -1,6 +1,33 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type { ApiResponse } from '@lazyday/types';
 
+// CSRF token cache
+let csrfToken: string | null = null;
+let csrfFetching: Promise<string> | null = null;
+
+async function ensureCsrfToken(baseURL: string): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (csrfFetching) return csrfFetching;
+
+  csrfFetching = axios
+    .get<ApiResponse<{ token: string }>>(`${baseURL}/api/portal/v1/auth/csrf-token`, {
+      withCredentials: true,
+    })
+    .then((res) => {
+      csrfToken = res.data.data.token;
+      csrfFetching = null;
+      return csrfToken;
+    })
+    .catch(() => {
+      csrfFetching = null;
+      return '';
+    });
+
+  return csrfFetching;
+}
+
+const STATE_CHANGING_METHODS = ['post', 'put', 'delete', 'patch'];
+
 /**
  * 创建 Axios 实例
  * - baseURL 指向 Edge Gateway（开发环境直连 Backend）
@@ -16,10 +43,20 @@ function createClient(baseURL: string) {
     },
   });
 
-  // 请求拦截器
+  // 请求拦截器：自动注入 CSRF token
   client.interceptors.request.use(
-    (config: InternalAxiosRequestConfig) => {
-      // Cookie 自动携带，无需手动设置 Authorization
+    async (config: InternalAxiosRequestConfig) => {
+      const method = (config.method || '').toLowerCase();
+      if (STATE_CHANGING_METHODS.includes(method)) {
+        const url = config.url || '';
+        const isAuthExempt = url.includes('/auth/login') || url.includes('/auth/register');
+        if (!isAuthExempt) {
+          const token = await ensureCsrfToken(baseURL);
+          if (token) {
+            config.headers.set('X-CSRF-Token', token);
+          }
+        }
+      }
       return config;
     },
     (error) => Promise.reject(error),
@@ -41,7 +78,7 @@ function createClient(baseURL: string) {
         if (path.startsWith('/admin')) {
           window.location.href = '/admin/login';
         } else {
-          window.location.href = '/portal/login';
+          window.location.href = '/login';
         }
         return Promise.reject(new Error('认证已过期，请重新登录'));
       }

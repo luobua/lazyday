@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Form, Input, Button, Checkbox, Typography, message } from 'antd';
+import React from 'react';
+import { Form, Input, Button, Checkbox, Typography, App } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
+import { useAdminLogin } from '@/hooks/use-auth';
 
 interface LoginFormValues {
   username: string;
@@ -12,21 +13,27 @@ interface LoginFormValues {
 }
 
 export default function AdminLoginPage() {
-  const [loading, setLoading] = useState(false);
+  const { message } = App.useApp();
   const router = useRouter();
+  const loginMutation = useAdminLogin();
 
   const onFinish = async (values: LoginFormValues) => {
-    setLoading(true);
     try {
-      // TODO: 替换为 adminAuthApi.login(values)
-      console.log('Admin login attempt:', values);
-      message.success('登录功能将在 Backend 就绪后启用');
-      router.push('/admin/overview');
+      await loginMutation.mutateAsync({
+        username: values.username,
+        password: values.password,
+        remember: values.remember,
+      });
+      router.push('/overview');
     } catch (err: unknown) {
-      const error = err as Error;
-      message.error(error.message || '登录失败');
-    } finally {
-      setLoading(false);
+      const error = err as Error & { error_code?: string };
+      if (error.error_code === 'INVALID_CREDENTIALS') {
+        message.error('用户名或密码错误');
+      } else if (error.error_code === 'FORBIDDEN_ROLE') {
+        message.error('权限不足，非管理员账号');
+      } else {
+        message.error(error.message || '登录失败');
+      }
     }
   };
 
@@ -44,7 +51,7 @@ export default function AdminLoginPage() {
         </Form.Item>
       </Form.Item>
       <Form.Item>
-        <Button type="primary" htmlType="submit" loading={loading} block size="large" style={{ background: '#722ed1', borderColor: '#722ed1' }}>
+        <Button type="primary" htmlType="submit" loading={loginMutation.isPending} block size="large" style={{ background: '#722ed1', borderColor: '#722ed1' }}>
           登录管理后台
         </Button>
       </Form.Item>

@@ -19,6 +19,7 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
 import { usePathname, useRouter } from 'next/navigation';
+import { useAdminLogout } from '@/hooks/use-auth';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -26,22 +27,22 @@ const { Text } = Typography;
 // 运营管理
 const overviewItems: MenuProps['items'] = [
   {
-    key: '/admin/overview',
+    key: '/overview',
     icon: <DashboardOutlined />,
     label: '系统概览',
   },
   {
-    key: '/admin/tenants',
+    key: '/tenants',
     icon: <TeamOutlined />,
     label: '租户管理',
   },
   {
-    key: '/admin/plans',
+    key: '/plans',
     icon: <CrownOutlined />,
     label: '套餐管理',
   },
   {
-    key: '/admin/logs',
+    key: '/logs',
     icon: <FileTextOutlined />,
     label: '调用日志',
   },
@@ -50,22 +51,22 @@ const overviewItems: MenuProps['items'] = [
 // AI 平台管理
 const aiItems: MenuProps['items'] = [
   {
-    key: '/admin/rag',
+    key: '/rag',
     icon: <DatabaseOutlined />,
     label: 'RAG 管理',
   },
   {
-    key: '/admin/agent',
+    key: '/agent',
     icon: <RobotOutlined />,
     label: 'Agent 管理',
   },
   {
-    key: '/admin/workflow',
+    key: '/workflow',
     icon: <ApartmentOutlined />,
     label: 'Workflow 管理',
   },
   {
-    key: '/admin/brain-configs',
+    key: '/brain-configs',
     icon: <CloudOutlined />,
     label: '配置下发',
   },
@@ -74,7 +75,7 @@ const aiItems: MenuProps['items'] = [
 // 系统
 const systemItems: MenuProps['items'] = [
   {
-    key: '/admin/settings',
+    key: '/settings',
     icon: <SettingOutlined />,
     label: '系统设置',
   },
@@ -94,13 +95,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const { token } = theme.useToken();
+  const logoutMutation = useAdminLogout();
 
   const onMenuClick: MenuProps['onClick'] = ({ key }) => {
     router.push(key);
   };
 
   const onLogout = () => {
-    router.push('/admin/login');
+    logoutMutation.mutate(undefined, {
+      onSuccess: () => router.push('/login'),
+    });
   };
 
   const userMenuItems: MenuProps['items'] = [
@@ -160,7 +164,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </Dropdown>
         </Header>
-        <Content className="dashboard-content">
+        <Content className="dashboard-content" key={pathname}>
           {children}
         </Content>
       </Layout>

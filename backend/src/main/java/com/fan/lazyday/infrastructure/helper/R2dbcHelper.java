@@ -553,8 +553,10 @@ public final class R2dbcHelper {
         try {
             SerializedLambda sLambda = ReflectHelper.invokeDeclaredMethod(fieldFn, "writeReplace");
 
-            Class<?> capturingClass = ReflectHelper.getDeclaredFieldValue(sLambda, "capturingClass");
-            ClassLoader classLoader = capturingClass.getClassLoader();
+            // 使用 SerializedLambda 公共 API 获取 capturingClass，避免 Java 21 模块系统限制
+            String capturingClassName = sLambda.getCapturingClass().replace('/', '.');
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            Class<?> capturingClass = classLoader.loadClass(capturingClassName);
 
             Class<?> implClass = classLoader.loadClass(sLambda.getImplClass().replaceAll("/", "."));
 

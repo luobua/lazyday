@@ -37,14 +37,14 @@ export interface UserInfo {
 export interface LoginRequest {
   username: string;
   password: string;
-  remember_me?: boolean;
+  remember?: boolean;
 }
 
 export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
-  tenant_name: string;
+  tenantName: string;
 }
 
 // 租户相关
