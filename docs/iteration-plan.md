@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 修订内容 |
 |------|------|---------|
+| v0.3 | 2026-04-29 | Phase 2 拆分为 Phase 2a（Backend 配额/日志/进程内限流）与 Phase 2b（Edge 网关 + WebSocket + Frontend）；V2 已被 `seed_platform_admin` 占用，配额+日志迁移改用 V3；详见 OpenSpec change `phase-2a-quota-and-logging`（§3.2 旧描述保留供历史比对，将随 2a/2b 落地分别更新） |
 | v0.2 | 2026-04-26 | Phase 1 补充 Refresh Token + CSRF + `@RequestMappingOpenV1` + Admin 验收项；Phase 2 V2 脚本补充 t_call_log 分区表 + t_tenant_quota，新增 Resilience4j 熔断，CSV 导出移入 Phase 2；Phase 3 邮件服务对齐 requirements-design.md §7；Phase 4 技术依赖修正为「Phase 2-3」；Phase 5 V5 改为预聚合表，移除重复的 CSV 导出；新增团队规模假设与风险缓冲说明 |
 | v0.1 | 2026-04-26 | 初始版本，基于 5 份架构文档划分 5 个迭代阶段 |
 
