@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.data.relational.core.query.Criteria;
 import org.springframework.data.relational.core.query.Query;
+import org.springframework.data.relational.core.query.Update;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -55,5 +56,23 @@ public class UserRepository {
         Criteria criteria = Criteria
                 .where(R2dbcHelper.toFieldName(User::getId)).is(id);
         return r2dbcEntityTemplate.selectOne(query(criteria), PO_CLASS);
+    }
+
+    public Flux<String> findTenantAdminEmailsByTenantId(Long tenantId) {
+        Criteria criteria = Criteria
+                .where(R2dbcHelper.toFieldName(User::getTenantId)).is(tenantId)
+                .and(R2dbcHelper.toFieldName(User::getRole)).is("TENANT_ADMIN")
+                .and(R2dbcHelper.toFieldName(User::getStatus)).is("ACTIVE");
+        return r2dbcEntityTemplate.select(query(criteria), PO_CLASS)
+                .map(User::getEmail)
+                .filter(email -> email != null && !email.isBlank());
+    }
+
+    public Mono<Long> updateById(Long id, Update update) {
+        Criteria criteria = Criteria
+                .where(R2dbcHelper.toFieldName(User::getId)).is(id);
+        return r2dbcEntityTemplate.update(PO_CLASS)
+                .matching(query(criteria))
+                .apply(update);
     }
 }

@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 修订内容 |
 |------|------|---------|
+| v0.6 | 2026-04-29 | 补充 Phase 3 当前实现：Webhook 事件持久化/调度数据流、配额/租户/套餐事件发布点、邮件服务与注册验证邮件说明。 |
 | v0.5 | 2026-04-25 | ID 策略统一为 BIGINT 自增序列（§4.2、§5.x 全量修改）；§5.1 移除 password_hash（密码存 t_user）；§9 WebSocket 代码改为 WebFlux 原生 WebSocketHandler；§5.9 HTML 残留清理；配置粒度说明补充 |
 | v0.4 | 2026-04-25 | **L-1**：`ConfigDispatchAggregation` 命名建议与「大脑配置」语义对齐，标注建议名称 `BrainConfigAggregation`（可选采纳）；引入「中枢定位」章节，明确 Backend 为中枢核心服务，不执行 AI 推理；补充 WebSocket 配置下发通道说明；tts_config 字段对齐（pitch/volume） |
 | v0.3 | 2026-04-25 | 新增 RAG 配置域、Agent 配置域、Workflow 配置域、配置下发域 |
@@ -226,36 +227,82 @@ domain/calllog/
 
 > **ID 生成策略**：调用日志表使用 **雪花算法**（应用层生成），避免数据库自增锁竞争，支持高并发写入。业务表（租户、AppKey 等）使用 **数据库自增序列**（PostgreSQL `GENERATED ALWAYS AS IDENTITY` 或 `SERIAL`），简化实现。
 
-### 5.5 Webhook 域
+### 5.5 Webhook 与邮件通知域
 
 ```
-domain/webhook/
-  ├── WebhookAggregation.java
-  ├── entity/WebhookEntity.java
-  ├── po/WebhookConfig.java       Webhook 配置
-  ├── po/WebhookEvent.java        待推送事件
-  └── repository/WebhookRepository.java
+domain/webhookconfig/
+  ├── WebhookConfigAggregation.java
+  ├── WebhookConfigEntity.java
+  ├── WebhookConfigPO.java
+  └── WebhookConfigRepository.java
+domain/webhookevent/
+  ├── WebhookEventPO.java
+  └── WebhookEventRepository.java
+infrastructure/event/
+  ├── DomainEventPublisher.java
+  └── DomainEventDeduplicator.java
+infrastructure/scheduler/
+  └── WebhookDispatcher.java
+application/service/
+  ├── WebhookSubscriber.java
+  ├── EmailService.java
+  ├── QuotaExceededEmailSubscriber.java
+  └── WebhookPermanentFailedEmailSubscriber.java
 ```
 
 **WebhookConfig 核心字段**：
 - `id` BIGINT 自增主键
 - `tenant_id` BIGINT 租户 ID
+- `name` Webhook 名称
 - `url` 回调地址
-- `events` 订阅事件列表（JSON 数组）
-- `secret` 签名密钥
-- `status` 状态（active / disabled）
-- `retry_count` 最大重试次数
+- `event_types` 订阅事件列表（逗号分隔）
+- `secret_encrypted` HMAC 签名密钥（AES 加密）
+- `status` 状态（ACTIVE / DISABLED）
+
+**WebhookEvent 核心字段**：
+- `id` BIGINT（雪花 ID）
+- `tenant_id` / `config_id`
+- `event_type` 与 `payload`（JSONB）
+- `status`（pending / delivering / succeeded / failed / permanent_failed）
+- `retry_count` / `next_retry_at`
+- `locked_at` / `locked_by`
+- `last_http_status` / `last_response_excerpt` / `last_error`
+- `created_time` / `delivered_time`
 
 **领域事件使用场景**：
 
 | 事件 | 触发源 | 消费者 |
 |------|--------|--------|
-| `AppKeyDisabledEvent` | AppKey 被禁用 | Webhook 推送服务 |
-| `TenantSuspendedEvent` | 租户被暂停 | Webhook 推送服务 |
-| `QuotaWarningEvent` | 配额使用超 80% | Webhook 推送服务 |
-| `QuotaExceededEvent` | 配额耗尽 | Webhook 推送服务 |
+| `AppKeyDisabledEvent` | AppKey 被禁用 | WebhookSubscriber |
+| `AppKeyRotatedEvent` | AppKey 密钥轮换 | WebhookSubscriber |
+| `TenantSuspendedEvent` / `TenantResumedEvent` | Admin 暂停/恢复租户 | WebhookSubscriber |
+| `QuotaExceededEvent` | RateLimitWebFilter 拒绝日/月配额请求 | WebhookSubscriber + QuotaExceededEmailSubscriber |
+| `QuotaPlanChangedEvent` | Admin 改套餐或覆盖配额 | WebhookSubscriber |
+| `WebhookPermanentFailedEvent` | WebhookDispatcher 达到最大重试次数 | WebhookPermanentFailedEmailSubscriber |
 
-事件通过 `DomainEventPublisher` 发布，Webhook 服务监听后异步推送至租户配置的回调地址。
+**Webhook 数据流**：
+
+```
+业务写路径提交成功
+  → DomainEventPublisher.publish(event)
+  → WebhookSubscriber 读取 ACTIVE 配置并写 t_webhook_event(pending)
+  → WebhookDispatcher 定时 recoverGhostLocks()
+  → SELECT ... FOR UPDATE SKIP LOCKED 拉取 due events
+  → WebClient POST 回调地址，附 X-Lazyday-* 签名头
+  → 2xx 标记 succeeded；非 2xx/网络错误按 1m/5m/30m/2h/6h 退避
+  → 达到 maxRetries 标记 permanent_failed 并发布 WebhookPermanentFailedEvent
+```
+
+签名格式为 `HMAC-SHA256(secret, timestamp + "." + body)`，结果以 hex 放入 `X-Lazyday-Signature`。创建与轮换 Webhook 时返回明文 secret 一次，随后仅存储 AES 密文。
+
+**邮件服务说明**：
+
+- `EmailService` 使用 Spring Mail，同步 `JavaMailSender` 包装在 Reactor `boundedElastic` 中执行。
+- `EmailTemplateRenderer` 使用 Thymeleaf 渲染 `resources/templates/email/*.html`。
+- 未配置 SMTP 时发送路径记录 warn 并跳过，保证本地开发不被邮件凭证阻断。
+- 注册成功后发送 `registration-verify` 邮件；邮箱验证 token 使用 JWT 携带用途与 userId，默认 24 小时有效。
+- 配额耗尽邮件通过 `QuotaExceededEvent` 触发，按 `(tenantId, period)` 24 小时去重后发送给该租户所有 ACTIVE `TENANT_ADMIN` 邮箱。
+- Webhook 永久失败邮件通过 `WebhookPermanentFailedEvent` 触发，按 `(tenantId, configId)` 24 小时去重。
 
 ---
 

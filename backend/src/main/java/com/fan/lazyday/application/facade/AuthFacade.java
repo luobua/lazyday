@@ -8,4 +8,5 @@ public interface AuthFacade {
     Mono<UserInfoResponse> login(String username, String password);
     Mono<UserInfoResponse> adminLogin(String username, String password);
     Mono<UserInfoResponse> getUserInfo(Long userId);
+    Mono<Void> verifyEmail(String token);
 }

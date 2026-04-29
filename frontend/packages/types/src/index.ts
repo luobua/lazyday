@@ -58,6 +58,38 @@ export interface TenantInfo {
   updated_at: string;
 }
 
+export interface AdminTenantSummary {
+  id: number;
+  name: string;
+  email?: string;
+  status: 'ACTIVE' | 'SUSPENDED' | string;
+  plan_id?: number;
+  plan_name?: string;
+  created_time?: string;
+}
+
+export interface AdminTenantDetail extends AdminTenantSummary {
+  qps_limit?: number;
+  daily_limit?: number;
+  monthly_limit?: number;
+  max_app_keys?: number;
+  daily_usage?: number;
+  monthly_usage?: number;
+  app_key_count?: number;
+  tenant_admin_emails?: string[];
+}
+
+export interface AdminOverviewMetrics {
+  total_tenants: number;
+  active_tenants_7d: number;
+  today_calls: number;
+  today_success_rate?: number | null;
+  top_paths_today: Array<{
+    path: string;
+    call_count: number;
+  }>;
+}
+
 // AppKey 相关
 export interface AppKeyInfo {
   id: number;
@@ -133,21 +165,46 @@ export interface CallLogStats {
 }
 
 // Webhook
+export type WebhookEventType =
+  | 'appkey.disabled'
+  | 'appkey.rotated'
+  | 'tenant.suspended'
+  | 'tenant.resumed'
+  | 'quota.exceeded'
+  | 'quota.plan_changed'
+  | 'webhook.permanent_failed';
+
 export interface WebhookConfig {
   id: number;
   name: string;
   url: string;
-  events: string[];
-  secret: string;
-  status: 'active' | 'disabled';
-  created_at: string;
-  updated_at: string;
+  event_types: WebhookEventType[];
+  secret?: string;
+  status: 'ACTIVE' | 'DISABLED' | string;
+  create_time: string;
+  update_time?: string;
 }
 
-export interface CreateWebhookRequest {
+export interface WebhookCreateRequest {
   name: string;
   url: string;
-  events: string[];
+  event_types: WebhookEventType[];
+}
+
+export interface WebhookUpdateRequest {
+  name?: string;
+  url?: string;
+  event_types?: WebhookEventType[];
+  status?: 'ACTIVE' | 'DISABLED';
+}
+
+export interface WebhookTestResult {
+  http_status?: number;
+  response_headers?: Record<string, string>;
+  response_body_excerpt?: string;
+  latency_ms: number;
+  error_code?: string;
+  error?: string;
 }
 
 // 配额
@@ -169,6 +226,7 @@ export interface QuotaPlan {
   max_app_keys: number;
   status: string;
   create_time?: string;
+  binding_count?: number;
 }
 
 export interface CreateQuotaPlanRequest {
@@ -188,6 +246,7 @@ export interface UpdateQuotaPlanRequest {
 }
 
 export interface OverrideQuotaRequest {
+  plan_id?: number;
   custom_qps_limit?: number;
   custom_daily_limit?: number;
   custom_monthly_limit?: number;

@@ -1,6 +1,7 @@
 package com.fan.lazyday.application.facade.impl;
 
 import com.fan.lazyday.application.service.AuthService;
+import com.fan.lazyday.application.service.EmailService;
 import com.fan.lazyday.domain.quotaplan.po.QuotaPlan;
 import com.fan.lazyday.domain.quotaplan.repository.QuotaPlanRepository;
 import com.fan.lazyday.domain.tenant.po.Tenant;
@@ -10,6 +11,8 @@ import com.fan.lazyday.domain.tenantquota.repository.TenantQuotaRepository;
 import com.fan.lazyday.domain.user.po.User;
 import com.fan.lazyday.domain.user.repository.UserRepository;
 import com.fan.lazyday.infrastructure.exception.BizException;
+import com.fan.lazyday.infrastructure.properties.ServiceProperties;
+import com.fan.lazyday.infrastructure.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -21,12 +24,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.transaction.reactive.TransactionalOperator;
+import org.springframework.data.relational.core.query.Update;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +49,9 @@ class AuthFacadeImplTest {
     @Mock private TransactionalOperator transactionalOperator;
     @Mock private QuotaPlanRepository quotaPlanRepository;
     @Mock private TenantQuotaRepository tenantQuotaRepository;
+    @Mock private EmailService emailService;
+    @Mock private JwtService jwtService;
+    private ServiceProperties serviceProperties;
 
     private AuthFacadeImpl authFacade;
 
@@ -52,13 +60,19 @@ class AuthFacadeImplTest {
 
     @BeforeEach
     void setUp() {
+        serviceProperties = new ServiceProperties();
+        serviceProperties.setDomainHost("https://portal.lazyday.dev");
+        serviceProperties.setPortalContextPathV1("/api/portal/v1");
         authFacade = new AuthFacadeImpl(
                 authService,
                 tenantRepository,
                 userRepository,
                 transactionalOperator,
                 quotaPlanRepository,
-                tenantQuotaRepository
+                tenantQuotaRepository,
+                emailService,
+                jwtService,
+                serviceProperties
         );
         // 让 transactionalOperator.transactional() 直接透传 Mono
         when(transactionalOperator.transactional(any(Mono.class)))
@@ -96,6 +110,9 @@ class AuthFacadeImplTest {
             User user = buildUser();
             when(authService.createUser("testuser", "test@example.com", "pass123", TENANT_ID, "TENANT_ADMIN"))
                     .thenReturn(Mono.just(user));
+            when(jwtService.generateEmailVerificationToken(USER_ID)).thenReturn("verify-token");
+            when(emailService.send(any(), eq("欢迎注册 Lazyday - 请验证邮箱"), eq("registration-verify"), any()))
+                    .thenReturn(Mono.empty());
 
             StepVerifier.create(authFacade.register("testuser", "test@example.com", "pass123", "MyTenant"))
                     .assertNext(response -> {
@@ -119,6 +136,44 @@ class AuthFacadeImplTest {
             verify(tenantQuotaRepository).insert(tenantQuotaCaptor.capture());
             assertThat(tenantQuotaCaptor.getValue().getTenantId()).isEqualTo(TENANT_ID);
             assertThat(tenantQuotaCaptor.getValue().getPlanId()).isEqualTo(1L);
+
+            verify(emailService).send(
+                    eq(java.util.List.of("test@example.com")),
+                    eq("欢迎注册 Lazyday - 请验证邮箱"),
+                    eq("registration-verify"),
+                    org.mockito.ArgumentMatchers.argThat(model ->
+                            model.get("verifyUrl").toString().contains("verify-token")
+                                    && model.get("expiresInHours").equals(24)
+                    )
+            );
+        }
+    }
+
+    @Nested
+    @DisplayName("verifyEmail")
+    class VerifyEmail {
+
+        @Test
+        @DisplayName("验证 token 成功后标记 email_verified")
+        void verifyEmail_success_shouldMarkUserVerified() {
+            when(jwtService.validateEmailVerificationToken("token")).thenReturn(USER_ID);
+            when(userRepository.updateById(eq(USER_ID), any(Update.class))).thenReturn(Mono.just(1L));
+
+            StepVerifier.create(authFacade.verifyEmail("token"))
+                    .verifyComplete();
+
+            verify(userRepository).updateById(eq(USER_ID), any(Update.class));
+        }
+
+        @Test
+        @DisplayName("验证 token 无效时抛 EMAIL_VERIFY_INVALID")
+        void verifyEmail_invalidToken_shouldThrowBadRequest() {
+            when(jwtService.validateEmailVerificationToken("bad")).thenReturn(null);
+
+            StepVerifier.create(authFacade.verifyEmail("bad"))
+                    .expectErrorMatches(ex -> ex instanceof BizException be
+                            && be.getErrorCode().equals("EMAIL_VERIFY_INVALID"))
+                    .verify();
         }
     }
 

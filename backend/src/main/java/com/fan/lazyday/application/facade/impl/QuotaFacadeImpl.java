@@ -1,5 +1,6 @@
 package com.fan.lazyday.application.facade.impl;
 
+import com.fan.lazyday.domain.event.QuotaPlanChangedEvent;
 import com.fan.lazyday.application.facade.QuotaFacade;
 import com.fan.lazyday.domain.calllog.repository.CallLogRepository;
 import com.fan.lazyday.domain.quotaplan.po.QuotaPlan;
@@ -7,6 +8,7 @@ import com.fan.lazyday.domain.quotaplan.repository.QuotaPlanRepository;
 import com.fan.lazyday.domain.tenantquota.entity.TenantQuotaEntity;
 import com.fan.lazyday.domain.tenantquota.po.TenantQuota;
 import com.fan.lazyday.domain.tenantquota.repository.TenantQuotaRepository;
+import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
 import com.fan.lazyday.infrastructure.exception.BizException;
 import com.fan.lazyday.infrastructure.exception.ErrorCode;
 import com.fan.lazyday.interfaces.request.CreatePlanRequest;
@@ -26,6 +28,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
 import java.util.List;
+import java.util.Objects;
 
 @Component
 @RequiredArgsConstructor
@@ -35,11 +38,12 @@ public class QuotaFacadeImpl implements QuotaFacade {
     private final TenantQuotaRepository tenantQuotaRepository;
     private final CallLogRepository callLogRepository;
     private final TransactionalOperator transactionalOperator;
+    private final DomainEventPublisher domainEventPublisher;
 
     @Override
     public Mono<List<QuotaPlanResponse>> listPlans() {
-        return quotaPlanRepository.findAll()
-                .map(this::toResponse)
+        return quotaPlanRepository.findAllWithBindingCount()
+                .map(plan -> toResponse(plan.plan(), plan.bindingCount()))
                 .collectList();
     }
 
@@ -102,22 +106,33 @@ public class QuotaFacadeImpl implements QuotaFacade {
                 .switchIfEmpty(Mono.error(BizException.of(ErrorCode.PLAN_NOT_FOUND, "套餐不存在")))
                 .flatMap(plan -> transactionalOperator.transactional(
                         tenantQuotaRepository.findByTenantId(tenantId)
-                                .flatMap(existing -> tenantQuotaRepository.updateByTenantId(
-                                        tenantId,
-                                        Update.update("plan_id", planId)
-                                                .set("custom_qps_limit", null)
-                                                .set("custom_daily_limit", null)
-                                                .set("custom_monthly_limit", null)
-                                                .set("custom_max_app_keys", null)
-                                ))
+                                .flatMap(existing -> {
+                                    TenantQuota desired = new TenantQuota();
+                                    desired.setTenantId(tenantId);
+                                    desired.setPlanId(planId);
+                                    if (sameTenantQuota(existing, desired)) {
+                                        return Mono.just(QuotaChange.unchanged(existing.getPlanId(), planId));
+                                    }
+                                    return tenantQuotaRepository.updateByTenantId(
+                                                    tenantId,
+                                                    Update.update("plan_id", planId)
+                                                            .set("custom_qps_limit", null)
+                                                            .set("custom_daily_limit", null)
+                                                            .set("custom_monthly_limit", null)
+                                                            .set("custom_max_app_keys", null)
+                                            )
+                                            .thenReturn(QuotaChange.changed(existing.getPlanId(), planId));
+                                })
                                 .switchIfEmpty(Mono.defer(() -> {
                                     TenantQuota tenantQuota = new TenantQuota();
                                     tenantQuota.setTenantId(tenantId);
                                     tenantQuota.setPlanId(planId);
-                                    return tenantQuotaRepository.save(tenantQuota).then(Mono.just(1L));
+                                    return tenantQuotaRepository.save(tenantQuota)
+                                            .thenReturn(QuotaChange.changed(null, planId));
                                 }))
                 ))
-                .then(Mono.defer(() -> getEffectiveQuota(tenantId)));
+                .flatMap(change -> getEffectiveQuota(tenantId)
+                        .doOnSuccess(response -> publishQuotaPlanChanged(tenantId, change)));
     }
 
     @Override
@@ -126,26 +141,29 @@ public class QuotaFacadeImpl implements QuotaFacade {
                 .switchIfEmpty(Mono.error(BizException.of(ErrorCode.PLAN_NOT_FOUND, "套餐不存在")))
                 .flatMap(plan -> transactionalOperator.transactional(
                         tenantQuotaRepository.findByTenantId(tenantId)
-                                .flatMap(existing -> tenantQuotaRepository.updateByTenantId(
-                                        tenantId,
-                                        Update.update("plan_id", request.getPlanId())
-                                                .set("custom_qps_limit", request.getCustomQpsLimit())
-                                                .set("custom_daily_limit", request.getCustomDailyLimit())
-                                                .set("custom_monthly_limit", request.getCustomMonthlyLimit())
-                                                .set("custom_max_app_keys", request.getCustomMaxAppKeys())
-                                ))
+                                .flatMap(existing -> {
+                                    TenantQuota desired = toTenantQuota(tenantId, request);
+                                    if (sameTenantQuota(existing, desired)) {
+                                        return Mono.just(QuotaChange.unchanged(existing.getPlanId(), request.getPlanId()));
+                                    }
+                                    return tenantQuotaRepository.updateByTenantId(
+                                                    tenantId,
+                                                    Update.update("plan_id", request.getPlanId())
+                                                            .set("custom_qps_limit", request.getCustomQpsLimit())
+                                                            .set("custom_daily_limit", request.getCustomDailyLimit())
+                                                            .set("custom_monthly_limit", request.getCustomMonthlyLimit())
+                                                            .set("custom_max_app_keys", request.getCustomMaxAppKeys())
+                                            )
+                                            .thenReturn(QuotaChange.changed(existing.getPlanId(), request.getPlanId()));
+                                })
                                 .switchIfEmpty(Mono.defer(() -> {
-                                    TenantQuota tenantQuota = new TenantQuota();
-                                    tenantQuota.setTenantId(tenantId);
-                                    tenantQuota.setPlanId(request.getPlanId());
-                                    tenantQuota.setCustomQpsLimit(request.getCustomQpsLimit());
-                                    tenantQuota.setCustomDailyLimit(request.getCustomDailyLimit());
-                                    tenantQuota.setCustomMonthlyLimit(request.getCustomMonthlyLimit());
-                                    tenantQuota.setCustomMaxAppKeys(request.getCustomMaxAppKeys());
-                                    return tenantQuotaRepository.save(tenantQuota).then(Mono.just(1L));
+                                    TenantQuota tenantQuota = toTenantQuota(tenantId, request);
+                                    return tenantQuotaRepository.save(tenantQuota)
+                                            .thenReturn(QuotaChange.changed(null, request.getPlanId()));
                                 }))
                 ))
-                .then(Mono.defer(() -> getEffectiveQuota(tenantId)));
+                .flatMap(change -> getEffectiveQuota(tenantId)
+                        .doOnSuccess(response -> publishQuotaPlanChanged(tenantId, change)));
     }
 
     @Override
@@ -177,6 +195,10 @@ public class QuotaFacadeImpl implements QuotaFacade {
     }
 
     private QuotaPlanResponse toResponse(QuotaPlan plan) {
+        return toResponse(plan, null);
+    }
+
+    private QuotaPlanResponse toResponse(QuotaPlan plan, Long bindingCount) {
         QuotaPlanResponse response = new QuotaPlanResponse();
         response.setId(plan.getId());
         response.setName(plan.getName());
@@ -186,6 +208,7 @@ public class QuotaFacadeImpl implements QuotaFacade {
         response.setMaxAppKeys(plan.getMaxAppKeys());
         response.setStatus(plan.getStatus());
         response.setCreateTime(plan.getCreateTime());
+        response.setBindingCount(bindingCount);
         return response;
     }
 
@@ -210,5 +233,45 @@ public class QuotaFacadeImpl implements QuotaFacade {
                     tenantQuota.setPlanId(plan.getId());
                     return tenantQuota;
                 });
+    }
+
+    private TenantQuota toTenantQuota(Long tenantId, OverrideQuotaRequest request) {
+        TenantQuota tenantQuota = new TenantQuota();
+        tenantQuota.setTenantId(tenantId);
+        tenantQuota.setPlanId(request.getPlanId());
+        tenantQuota.setCustomQpsLimit(request.getCustomQpsLimit());
+        tenantQuota.setCustomDailyLimit(request.getCustomDailyLimit());
+        tenantQuota.setCustomMonthlyLimit(request.getCustomMonthlyLimit());
+        tenantQuota.setCustomMaxAppKeys(request.getCustomMaxAppKeys());
+        return tenantQuota;
+    }
+
+    private boolean sameTenantQuota(TenantQuota current, TenantQuota desired) {
+        return Objects.equals(current.getPlanId(), desired.getPlanId())
+                && Objects.equals(current.getCustomQpsLimit(), desired.getCustomQpsLimit())
+                && Objects.equals(current.getCustomDailyLimit(), desired.getCustomDailyLimit())
+                && Objects.equals(current.getCustomMonthlyLimit(), desired.getCustomMonthlyLimit())
+                && Objects.equals(current.getCustomMaxAppKeys(), desired.getCustomMaxAppKeys());
+    }
+
+    private void publishQuotaPlanChanged(Long tenantId, QuotaChange change) {
+        if (change.changed()) {
+            domainEventPublisher.publish(new QuotaPlanChangedEvent(
+                    tenantId,
+                    change.previousPlanId(),
+                    change.newPlanId(),
+                    Instant.now()
+            ));
+        }
+    }
+
+    private record QuotaChange(boolean changed, Long previousPlanId, Long newPlanId) {
+        private static QuotaChange changed(Long previousPlanId, Long newPlanId) {
+            return new QuotaChange(true, previousPlanId, newPlanId);
+        }
+
+        private static QuotaChange unchanged(Long previousPlanId, Long newPlanId) {
+            return new QuotaChange(false, previousPlanId, newPlanId);
+        }
     }
 }

@@ -2,11 +2,17 @@ package com.fan.lazyday.infrastructure.filter;
 
 import com.fan.lazyday.application.facade.QuotaFacade;
 import com.fan.lazyday.domain.calllog.repository.CallLogRepository;
+import com.fan.lazyday.domain.event.QuotaExceededEvent;
+import com.fan.lazyday.domain.tenant.po.Tenant;
+import com.fan.lazyday.domain.tenant.repository.TenantRepository;
+import com.fan.lazyday.infrastructure.event.DomainEventDeduplicator;
+import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
 import com.fan.lazyday.interfaces.response.EffectiveQuotaResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -22,10 +28,11 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class RateLimitWebFilterTest {
@@ -35,14 +42,26 @@ class RateLimitWebFilterTest {
     @Mock
     private CallLogRepository callLogRepository;
     @Mock
+    private TenantRepository tenantRepository;
+    @Mock
+    private DomainEventPublisher domainEventPublisher;
+    @Mock
+    private DomainEventDeduplicator domainEventDeduplicator;
+    @Mock
     private WebFilterChain chain;
 
     private RateLimitWebFilter filter;
 
     @BeforeEach
     void setUp() {
-        filter = new RateLimitWebFilter(quotaFacade, callLogRepository);
-        when(chain.filter(any())).thenReturn(Mono.empty());
+        filter = new RateLimitWebFilter(
+                quotaFacade,
+                callLogRepository,
+                tenantRepository,
+                domainEventPublisher,
+                domainEventDeduplicator
+        );
+        lenient().when(chain.filter(any())).thenReturn(Mono.empty());
     }
 
     @Test
@@ -83,6 +102,7 @@ class RateLimitWebFilterTest {
         quota.setMonthlyLimit(5_000_000L);
         quota.setMaxAppKeys(-1);
         when(quotaFacade.getEffectiveQuota(100L)).thenReturn(Mono.just(quota));
+        when(tenantRepository.findById(100L)).thenReturn(Mono.just(activeTenant(100L)));
         when(callLogRepository.countByTenantIdAndTimeRange(anyLong(), any(Instant.class), any(Instant.class)))
                 .thenReturn(Mono.just(0L));
 
@@ -111,6 +131,7 @@ class RateLimitWebFilterTest {
         quota.setMonthlyLimit(10_000L);
         quota.setMaxAppKeys(5);
         when(quotaFacade.getEffectiveQuota(5L)).thenReturn(Mono.just(quota));
+        when(tenantRepository.findById(5L)).thenReturn(Mono.just(activeTenant(5L)));
         when(callLogRepository.countByTenantIdAndTimeRange(anyLong(), any(Instant.class), any(Instant.class)))
                 .thenReturn(Mono.just(0L));
 
@@ -139,5 +160,143 @@ class RateLimitWebFilterTest {
         assertThat(second.getResponse().getHeaders().getFirst("Retry-After")).isNotBlank();
         verify(quotaFacade).getEffectiveQuota(5L);
         verify(quotaFacade, never()).getEffectiveQuota(7L);
+        verify(domainEventPublisher, never()).publish(any());
+    }
+
+    @Test
+    @DisplayName("daily quota 连续超限只发布一次 QuotaExceededEvent")
+    void dailyQuotaExceeded_shouldPublishOnceWithinDedupWindow() {
+        EffectiveQuotaResponse quota = quota(100, 1L, 10_000L);
+        when(tenantRepository.findById(100L)).thenReturn(Mono.just(activeTenant(100L)));
+        when(quotaFacade.getEffectiveQuota(100L)).thenReturn(Mono.just(quota));
+        when(callLogRepository.countByTenantIdAndTimeRange(anyLong(), any(Instant.class), any(Instant.class)))
+                .thenReturn(Mono.just(1L));
+        when(domainEventDeduplicator.tryRecord("quota-exceeded:100:day")).thenReturn(true, false);
+
+        for (int i = 0; i < 100; i++) {
+            MockServerWebExchange exchange = MockServerWebExchange.from(
+                    MockServerHttpRequest.get("/api/portal/v1/quota")
+                            .header("X-Tenant-Id", "100")
+                            .build()
+            );
+            StepVerifier.create(filter.filter(exchange, chain))
+                    .verifyComplete();
+            assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        }
+
+        ArgumentCaptor<QuotaExceededEvent> eventCaptor = ArgumentCaptor.forClass(QuotaExceededEvent.class);
+        verify(domainEventPublisher).publish(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().tenantId()).isEqualTo(100L);
+        assertThat(eventCaptor.getValue().period()).isEqualTo("day");
+        assertThat(eventCaptor.getValue().limit()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("monthly quota 超限发布 month 事件")
+    void monthlyQuotaExceeded_shouldPublishMonthlyEvent() {
+        EffectiveQuotaResponse quota = quota(100, 10_000L, 1L);
+        when(tenantRepository.findById(100L)).thenReturn(Mono.just(activeTenant(100L)));
+        when(quotaFacade.getEffectiveQuota(100L)).thenReturn(Mono.just(quota));
+        when(callLogRepository.countByTenantIdAndTimeRange(anyLong(), any(Instant.class), any(Instant.class)))
+                .thenReturn(Mono.just(0L), Mono.just(1L));
+        when(domainEventDeduplicator.tryRecord("quota-exceeded:100:month")).thenReturn(true);
+
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/portal/v1/quota")
+                        .header("X-Tenant-Id", "100")
+                        .build()
+        );
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        ArgumentCaptor<QuotaExceededEvent> eventCaptor = ArgumentCaptor.forClass(QuotaExceededEvent.class);
+        verify(domainEventPublisher).publish(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().period()).isEqualTo("month");
+        assertThat(eventCaptor.getValue().limit()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("dedup 允许再次记录时会再次发布 quota exceeded")
+    void quotaExceeded_shouldPublishAgainWhenDedupWindowExpires() {
+        EffectiveQuotaResponse quota = quota(100, 1L, 10_000L);
+        when(tenantRepository.findById(100L)).thenReturn(Mono.just(activeTenant(100L)));
+        when(quotaFacade.getEffectiveQuota(100L)).thenReturn(Mono.just(quota));
+        when(callLogRepository.countByTenantIdAndTimeRange(anyLong(), any(Instant.class), any(Instant.class)))
+                .thenReturn(Mono.just(1L));
+        when(domainEventDeduplicator.tryRecord("quota-exceeded:100:day")).thenReturn(true, false, true);
+
+        for (int i = 0; i < 3; i++) {
+            MockServerWebExchange exchange = MockServerWebExchange.from(
+                    MockServerHttpRequest.get("/api/portal/v1/quota")
+                            .header("X-Tenant-Id", "100")
+                            .build()
+            );
+            StepVerifier.create(filter.filter(exchange, chain))
+                    .verifyComplete();
+        }
+
+        verify(domainEventPublisher, times(2)).publish(any(QuotaExceededEvent.class));
+    }
+
+    @Test
+    @DisplayName("QPS 拒绝不发布 quota exceeded")
+    void qpsRejected_shouldNotPublishQuotaExceededEvent() {
+        EffectiveQuotaResponse quota = quota(1, 1_000L, 10_000L);
+        when(tenantRepository.findById(100L)).thenReturn(Mono.just(activeTenant(100L)));
+        when(quotaFacade.getEffectiveQuota(100L)).thenReturn(Mono.just(quota));
+        when(callLogRepository.countByTenantIdAndTimeRange(anyLong(), any(Instant.class), any(Instant.class)))
+                .thenReturn(Mono.just(0L));
+
+        StepVerifier.create(filter.filter(exchangeForTenant(100L), chain))
+                .verifyComplete();
+        StepVerifier.create(filter.filter(exchangeForTenant(100L), chain))
+                .verifyComplete();
+
+        verify(domainEventPublisher, never()).publish(any());
+    }
+
+    @Test
+    @DisplayName("SUSPENDED tenant 在配额和 QPS 前被拒绝")
+    void suspendedTenant_shouldReturn403BeforeRateLimitEvaluation() {
+        Tenant tenant = new Tenant();
+        tenant.setId(100L);
+        tenant.setStatus("SUSPENDED");
+        when(tenantRepository.findById(100L)).thenReturn(Mono.just(tenant));
+
+        MockServerWebExchange exchange = exchangeForTenant(100L);
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(exchange.getResponse().getBodyAsString().block()).contains("TENANT_SUSPENDED");
+        verify(quotaFacade, never()).getEffectiveQuota(anyLong());
+        verify(callLogRepository, never()).countByTenantIdAndTimeRange(anyLong(), any(), any());
+    }
+
+    private MockServerWebExchange exchangeForTenant(Long tenantId) {
+        return MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/portal/v1/quota")
+                        .header("X-Tenant-Id", String.valueOf(tenantId))
+                        .build()
+        );
+    }
+
+    private Tenant activeTenant(Long tenantId) {
+        Tenant tenant = new Tenant();
+        tenant.setId(tenantId);
+        tenant.setStatus("ACTIVE");
+        return tenant;
+    }
+
+    private EffectiveQuotaResponse quota(int qpsLimit, long dailyLimit, long monthlyLimit) {
+        EffectiveQuotaResponse quota = new EffectiveQuotaResponse();
+        quota.setPlanName("Test");
+        quota.setQpsLimit(qpsLimit);
+        quota.setDailyLimit(dailyLimit);
+        quota.setMonthlyLimit(monthlyLimit);
+        quota.setMaxAppKeys(5);
+        return quota;
     }
 }

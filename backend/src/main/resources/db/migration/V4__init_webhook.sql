@@ -2,6 +2,11 @@
 -- V4: Webhook configuration and outbound events
 -- =============================================
 
+ALTER TABLE t_user
+    ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+COMMENT ON COLUMN t_user.email_verified IS '邮箱是否已验证';
+
 CREATE TABLE t_webhook_config (
     id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     tenant_id        BIGINT       NOT NULL REFERENCES t_tenant(id),

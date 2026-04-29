@@ -13,7 +13,9 @@ import type {
   RegisterRequest,
   TenantInfo,
   WebhookConfig,
-  CreateWebhookRequest,
+  WebhookCreateRequest,
+  WebhookUpdateRequest,
+  WebhookTestResult,
   RagConfig,
   AgentConfig,
   WorkflowConfig,
@@ -102,17 +104,23 @@ export const webhookApi = {
   list: () =>
     get<WebhookConfig[]>(portalClient, '/api/portal/v1/webhooks'),
 
-  create: (data: CreateWebhookRequest) =>
+  get: (id: number) =>
+    get<WebhookConfig>(portalClient, `/api/portal/v1/webhooks/${id}`),
+
+  create: (data: WebhookCreateRequest) =>
     post<WebhookConfig>(portalClient, '/api/portal/v1/webhooks', data),
 
-  update: (id: number, data: Partial<CreateWebhookRequest>) =>
+  update: (id: number, data: WebhookUpdateRequest) =>
     put<WebhookConfig>(portalClient, `/api/portal/v1/webhooks/${id}`, data),
 
   delete: (id: number) =>
     del<void>(portalClient, `/api/portal/v1/webhooks/${id}`),
 
+  rotateSecret: (id: number) =>
+    post<WebhookConfig>(portalClient, `/api/portal/v1/webhooks/${id}/rotate-secret`),
+
   test: (id: number) =>
-    post<{ status: number; body: string }>(portalClient, `/api/portal/v1/webhooks/${id}/test`),
+    post<WebhookTestResult>(portalClient, `/api/portal/v1/webhooks/${id}/test`),
 };
 
 // ========== RAG API ==========

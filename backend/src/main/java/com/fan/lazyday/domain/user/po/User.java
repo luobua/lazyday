@@ -35,4 +35,5 @@ public class User extends BaseAllUserTime implements Serializable {
     private String status;
     private String email;
     private String username;
+    private Boolean emailVerified;
 }

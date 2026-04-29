@@ -29,6 +29,12 @@ public class AppKeyRepository {
         return r2dbcEntityTemplate.select(query(criteria), PO_CLASS);
     }
 
+    public Mono<Long> countByTenantId(Long tenantId) {
+        Criteria criteria = Criteria
+                .where(R2dbcHelper.toFieldName(AppKey::getTenantId)).is(tenantId);
+        return r2dbcEntityTemplate.count(query(criteria), PO_CLASS);
+    }
+
     public Mono<AppKey> findByIdAndTenantId(Long id, Long tenantId) {
         Criteria criteria = Criteria
                 .where(R2dbcHelper.toFieldName(AppKey::getId)).is(id)

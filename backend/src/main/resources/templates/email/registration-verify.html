@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>欢迎注册 Lazyday - 请验证邮箱</title>
+</head>
+<body style="margin:0;background:#f6f7fb;font-family:Arial,'Microsoft YaHei',sans-serif;color:#1f2937;">
+<main style="max-width:640px;margin:0 auto;padding:32px 24px;">
+    <h1 style="margin:0 0 20px;font-size:24px;color:#111827;">Lazyday</h1>
+    <section style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:28px;">
+        <h2 style="margin:0 0 16px;font-size:20px;">欢迎注册 Lazyday</h2>
+        <p style="line-height:1.7;">你好，<strong th:text="${userEmail}">user@example.com</strong>。</p>
+        <p style="line-height:1.7;">请点击下方按钮完成邮箱验证，链接将在 <strong th:text="${expiresInHours}">24</strong> 小时后失效。</p>
+        <p style="margin:28px 0;">
+            <a th:href="${verifyUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;">验证邮箱</a>
+        </p>
+        <p style="word-break:break-all;color:#4b5563;" th:text="${verifyUrl}">https://portal.lazyday.dev/verify</p>
+    </section>
+</main>
+</body>
+</html>

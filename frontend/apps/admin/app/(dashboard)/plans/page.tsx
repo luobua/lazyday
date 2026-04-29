@@ -146,6 +146,13 @@ export default function PlansPage() {
       render: (value: number) => (value < 0 ? '不限' : formatNumber(value)),
     },
     {
+      title: '绑定租户',
+      dataIndex: 'binding_count',
+      key: 'binding_count',
+      width: 120,
+      render: (value?: number) => formatNumber(value ?? 0),
+    },
+    {
       title: '创建时间',
       dataIndex: 'create_time',
       key: 'create_time',
@@ -163,7 +170,7 @@ export default function PlansPage() {
           </Button>
           <Popconfirm
             title="确定删除该套餐？"
-            description="删除后只会软禁用，不影响已绑定租户。"
+            description={(record.binding_count ?? 0) > 0 ? '该套餐已绑定租户，后端会拒绝删除。' : '删除后会软禁用该套餐。'}
             onConfirm={() => handleDelete(record.id)}
           >
             <Button type="link" danger loading={deletePlanMutation.isPending}>
@@ -209,20 +216,49 @@ export default function PlansPage() {
           <Form.Item name="name" label="套餐名称" rules={[{ required: true, message: '请输入套餐名称' }]}>
             <Input placeholder="例如 Free / Pro / Enterprise" />
           </Form.Item>
-          <Form.Item name="qps_limit" label="QPS 上限" rules={[{ required: true, message: '请输入 QPS 上限' }]}>
+          <Form.Item
+            name="qps_limit"
+            label="QPS 上限"
+            rules={[
+              { required: true, message: '请输入 QPS 上限' },
+              { type: 'number', min: 1, message: 'QPS 必须大于 0' },
+            ]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="daily_limit" label="日配额" rules={[{ required: true, message: '请输入日配额' }]}>
+          <Form.Item
+            name="daily_limit"
+            label="日配额"
+            rules={[
+              { required: true, message: '请输入日配额' },
+              { type: 'number', min: 1, message: '日配额必须大于 0' },
+            ]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="monthly_limit" label="月配额" rules={[{ required: true, message: '请输入月配额' }]}>
+          <Form.Item
+            name="monthly_limit"
+            label="月配额"
+            rules={[
+              { required: true, message: '请输入月配额' },
+              { type: 'number', min: 1, message: '月配额必须大于 0' },
+            ]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             name="max_app_keys"
             label="AppKey 上限"
             tooltip="-1 表示不限"
-            rules={[{ required: true, message: '请输入 AppKey 上限' }]}
+            rules={[
+              { required: true, message: '请输入 AppKey 上限' },
+              {
+                validator: (_, value?: number) => {
+                  if (typeof value !== 'number' || value === -1 || value > 0) return Promise.resolve();
+                  return Promise.reject(new Error('AppKey 上限必须大于 0，或填写 -1 表示不限'));
+                },
+              },
+            ]}
           >
             <InputNumber style={{ width: '100%' }} />
           </Form.Item>

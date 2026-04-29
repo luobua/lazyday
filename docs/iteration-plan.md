@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 修订内容 |
 |------|------|---------|
+| v0.4 | 2026-04-29 | Phase 3 Webhook + 邮件通知 + Admin 运营后台主体功能完成；Webhook 迁移脚本使用 V4（V1/V3 已用于前序租户与配额日志），Phase 2b（Edge 网关 + WebSocket）仍待启动；本轮剩余为本地联调与验收门。 |
 | v0.3 | 2026-04-29 | Phase 2 拆分为 Phase 2a（Backend 配额/日志/进程内限流）与 Phase 2b（Edge 网关 + WebSocket + Frontend）；V2 已被 `seed_platform_admin` 占用，配额+日志迁移改用 V3；详见 OpenSpec change `phase-2a-quota-and-logging`（§3.2 旧描述保留供历史比对，将随 2a/2b 落地分别更新） |
 | v0.2 | 2026-04-26 | Phase 1 补充 Refresh Token + CSRF + `@RequestMappingOpenV1` + Admin 验收项；Phase 2 V2 脚本补充 t_call_log 分区表 + t_tenant_quota，新增 Resilience4j 熔断，CSV 导出移入 Phase 2；Phase 3 邮件服务对齐 requirements-design.md §7；Phase 4 技术依赖修正为「Phase 2-3」；Phase 5 V5 改为预聚合表，移除重复的 CSV 导出；新增团队规模假设与风险缓冲说明 |
 | v0.1 | 2026-04-26 | 初始版本，基于 5 份架构文档划分 5 个迭代阶段 |
@@ -129,12 +130,12 @@
 
 **交付目标**：平台具备事件驱动通知能力和完整运营管理界面
 
-**技术依赖**：Phase 2 完成（配额域就绪，可触发 Webhook 事件）
+**技术依赖**：Phase 2a 完成（配额域就绪，可触发 Webhook 事件）；Phase 2b（Edge 网关 + WebSocket）仍待后续迭代启动
 
 **交付范围**：
 
 **3.3.1 Backend Webhook**
-- 新增 Flyway 迁移脚本 `V3__init_webhook.sql`（t_webhook_config + t_webhook_event 表）
+- 新增 Flyway 迁移脚本 `V4__init_webhook.sql`（t_webhook_config + t_webhook_event 表 + `t_user.email_verified`）
 - 实现 Backend Webhook 域（订阅配置 + DomainEventPublisher + 指数退避重试 + permanent_failed 标记）
 - 实现 Backend Webhook Portal API（CRUD + 测试推送 `/webhooks/{id}/test`）
 - 实现 Backend 邮件服务（Spring Mail + 阿里云邮件推送）：注册验证邮件 + 配额告警邮件（Phase 2 部分场景提前引入）

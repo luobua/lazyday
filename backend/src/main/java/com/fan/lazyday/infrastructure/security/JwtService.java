@@ -26,6 +26,8 @@ public class JwtService {
     private static final Duration ACCESS_TOKEN_EXPIRY = Duration.ofHours(2);
     private static final Duration REFRESH_TOKEN_EXPIRY = Duration.ofDays(7);
     private static final Duration REFRESH_TOKEN_REMEMBER_EXPIRY = Duration.ofDays(30);
+    private static final Duration EMAIL_VERIFY_TOKEN_EXPIRY = Duration.ofHours(24);
+    private static final String PURPOSE_EMAIL_VERIFY = "email_verify";
 
     private RSAPrivateKey privateKey;
     private RSAPublicKey publicKey;
@@ -53,6 +55,10 @@ public class JwtService {
         return generateToken(userId, tenantId, role, expiry);
     }
 
+    public String generateEmailVerificationToken(Long userId) {
+        return generateToken(userId, 0L, "EMAIL_VERIFY", EMAIL_VERIFY_TOKEN_EXPIRY, PURPOSE_EMAIL_VERIFY);
+    }
+
     public Duration getAccessTokenExpiry() {
         return ACCESS_TOKEN_EXPIRY;
     }
@@ -62,15 +68,22 @@ public class JwtService {
     }
 
     private String generateToken(Long userId, Long tenantId, String role, Duration expiry) {
+        return generateToken(userId, tenantId, role, expiry, null);
+    }
+
+    private String generateToken(Long userId, Long tenantId, String role, Duration expiry, String purpose) {
         try {
             Instant now = Instant.now();
-            JWTClaimsSet claims = new JWTClaimsSet.Builder()
+            JWTClaimsSet.Builder builder = new JWTClaimsSet.Builder()
                     .subject(String.valueOf(userId))
                     .claim("tenantId", tenantId)
                     .claim("role", role)
                     .issueTime(Date.from(now))
-                    .expirationTime(Date.from(now.plus(expiry)))
-                    .build();
+                    .expirationTime(Date.from(now.plus(expiry)));
+            if (purpose != null) {
+                builder.claim("purpose", purpose);
+            }
+            JWTClaimsSet claims = builder.build();
 
             SignedJWT signedJWT = new SignedJWT(
                     new JWSHeader(JWSAlgorithm.RS256),
@@ -100,6 +113,25 @@ public class JwtService {
                     false
             );
         } catch (ParseException | JOSEException e) {
+            return null;
+        }
+    }
+
+    public Long validateEmailVerificationToken(String token) {
+        try {
+            SignedJWT signedJWT = SignedJWT.parse(token);
+            if (!signedJWT.verify(verifier)) {
+                return null;
+            }
+            JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+            if (claims.getExpirationTime().before(new Date())) {
+                return null;
+            }
+            if (!PURPOSE_EMAIL_VERIFY.equals(claims.getStringClaim("purpose"))) {
+                return null;
+            }
+            return Long.parseLong(claims.getSubject());
+        } catch (ParseException | JOSEException | RuntimeException e) {
             return null;
         }
     }

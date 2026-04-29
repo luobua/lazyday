@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.http.HttpStatus;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import reactor.util.context.Context;
@@ -298,6 +299,26 @@ class PortalAuthHandlerTest {
                         assertThat(exchange.getResponse().getCookies().getFirst("csrf_token")).isNotNull();
                     })
                     .verifyComplete();
+        }
+    }
+
+    @Nested
+    @DisplayName("verifyEmail")
+    class VerifyEmail {
+
+        @Test
+        @DisplayName("验证成功后跳转到登录页")
+        void verifyEmail_success_shouldRedirectToLogin() {
+            when(authFacade.verifyEmail("token")).thenReturn(Mono.empty());
+            MockServerWebExchange exchange = MockServerWebExchange.from(
+                    MockServerHttpRequest.get("/api/portal/v1/auth/verify-email?token=token").build()
+            );
+
+            StepVerifier.create(handler.verifyEmail("token", exchange))
+                    .verifyComplete();
+
+            assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FOUND);
+            assertThat(exchange.getResponse().getHeaders().getLocation().toString()).isEqualTo("/login?verified=1");
         }
     }
 }

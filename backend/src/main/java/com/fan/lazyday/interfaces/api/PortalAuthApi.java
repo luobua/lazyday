@@ -8,6 +8,7 @@ import com.fan.lazyday.interfaces.response.UserInfoResponse;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -31,4 +32,7 @@ public interface PortalAuthApi {
 
     @GetMapping("/auth/csrf-token")
     Mono<ApiResponse<CsrfTokenResponse>> csrfToken(ServerWebExchange exchange);
+
+    @GetMapping("/auth/verify-email")
+    Mono<Void> verifyEmail(@RequestParam String token, ServerWebExchange exchange);
 }

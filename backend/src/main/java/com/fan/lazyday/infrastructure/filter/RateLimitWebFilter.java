@@ -2,6 +2,10 @@ package com.fan.lazyday.infrastructure.filter;
 
 import com.fan.lazyday.application.facade.QuotaFacade;
 import com.fan.lazyday.domain.calllog.repository.CallLogRepository;
+import com.fan.lazyday.domain.event.QuotaExceededEvent;
+import com.fan.lazyday.domain.tenant.repository.TenantRepository;
+import com.fan.lazyday.infrastructure.event.DomainEventDeduplicator;
+import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
 import com.fan.lazyday.infrastructure.exception.ErrorCode;
 import com.fan.lazyday.infrastructure.security.TenantContext;
 import com.fan.lazyday.interfaces.response.EffectiveQuotaResponse;
@@ -48,20 +52,32 @@ public class RateLimitWebFilter implements WebFilter {
 
     private final QuotaFacade quotaFacade;
     private final CallLogRepository callLogRepository;
+    private final TenantRepository tenantRepository;
+    private final DomainEventPublisher domainEventPublisher;
+    private final DomainEventDeduplicator domainEventDeduplicator;
     @Nullable
     private final MeterRegistry meterRegistry;
 
     public RateLimitWebFilter(QuotaFacade quotaFacade,
-                              CallLogRepository callLogRepository) {
-        this(quotaFacade, callLogRepository, null);
+                              CallLogRepository callLogRepository,
+                              TenantRepository tenantRepository,
+                              DomainEventPublisher domainEventPublisher,
+                              DomainEventDeduplicator domainEventDeduplicator) {
+        this(quotaFacade, callLogRepository, tenantRepository, domainEventPublisher, domainEventDeduplicator, null);
     }
 
     @Autowired
     public RateLimitWebFilter(QuotaFacade quotaFacade,
                               CallLogRepository callLogRepository,
+                              TenantRepository tenantRepository,
+                              DomainEventPublisher domainEventPublisher,
+                              DomainEventDeduplicator domainEventDeduplicator,
                               @Nullable MeterRegistry meterRegistry) {
         this.quotaFacade = quotaFacade;
         this.callLogRepository = callLogRepository;
+        this.tenantRepository = tenantRepository;
+        this.domainEventPublisher = domainEventPublisher;
+        this.domainEventDeduplicator = domainEventDeduplicator;
         this.meterRegistry = meterRegistry;
     }
 
@@ -71,6 +87,11 @@ public class RateLimitWebFilter implements WebFilter {
             .build();
 
     private final Cache<Long, EffectiveQuotaResponse> quotaCache = Caffeine.newBuilder()
+            .maximumSize(10_000)
+            .expireAfterWrite(Duration.ofSeconds(30))
+            .build();
+
+    private final Cache<Long, Boolean> suspendedTenantCache = Caffeine.newBuilder()
             .maximumSize(10_000)
             .expireAfterWrite(Duration.ofSeconds(30))
             .build();
@@ -125,6 +146,17 @@ public class RateLimitWebFilter implements WebFilter {
 
     private Mono<Void> enforceRateLimit(Long tenantId, ServerWebExchange exchange, WebFilterChain chain) {
         long startNanos = System.nanoTime();
+        return isTenantSuspended(tenantId)
+                .flatMap(suspended -> {
+                    if (suspended) {
+                        recordRejected(tenantId, "suspended", startNanos);
+                        return rejectSuspended(exchange);
+                    }
+                    return enforceQuotaAndQps(tenantId, exchange, chain, startNanos);
+                });
+    }
+
+    private Mono<Void> enforceQuotaAndQps(Long tenantId, ServerWebExchange exchange, WebFilterChain chain, long startNanos) {
         return getEffectiveQuota(tenantId)
                 .flatMap(quota -> {
                     BucketHolder bucketHolder = bucketCache.get(tenantId, key -> newBucketHolder(quota.getQpsLimit()));
@@ -144,6 +176,7 @@ public class RateLimitWebFilter implements WebFilter {
                         long dailyUsage = dailyCounter.sum();
                         if (dailyUsage >= quota.getDailyLimit()) {
                             recordRejected(tenantId, "daily", startNanos);
+                            publishQuotaExceeded(tenantId, "day", quota.getDailyLimit());
                             return reject(exchange, ErrorCode.QUOTA_DAILY_EXCEEDED.getCode(),
                                     quota.getDailyLimit(), 0, getTomorrowStartMs());
                         }
@@ -152,6 +185,7 @@ public class RateLimitWebFilter implements WebFilter {
                             long monthlyUsage = monthlyCounter.sum();
                             if (monthlyUsage >= quota.getMonthlyLimit()) {
                                 recordRejected(tenantId, "monthly", startNanos);
+                                publishQuotaExceeded(tenantId, "month", quota.getMonthlyLimit());
                                 return reject(exchange, ErrorCode.QUOTA_MONTHLY_EXCEEDED.getCode(),
                                         quota.getMonthlyLimit(), 0, getNextMonthStartMs());
                             }
@@ -165,6 +199,18 @@ public class RateLimitWebFilter implements WebFilter {
                         });
                     });
                 });
+    }
+
+    private Mono<Boolean> isTenantSuspended(Long tenantId) {
+        Boolean cached = suspendedTenantCache.getIfPresent(tenantId);
+        if (cached != null) {
+            return Mono.just(cached);
+        }
+
+        return tenantRepository.findById(tenantId)
+                .map(tenant -> "SUSPENDED".equalsIgnoreCase(tenant.getStatus()))
+                .defaultIfEmpty(false)
+                .doOnNext(suspended -> suspendedTenantCache.put(tenantId, suspended));
     }
 
     private Mono<EffectiveQuotaResponse> getEffectiveQuota(Long tenantId) {
@@ -227,6 +273,21 @@ public class RateLimitWebFilter implements WebFilter {
         String body = "{\"code\":42901,\"error_code\":\"" + errorCode + "\",\"message\":\"quota exceeded\"}";
         DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8));
         return exchange.getResponse().writeWith(Mono.just(buffer));
+    }
+
+    private Mono<Void> rejectSuspended(ServerWebExchange exchange) {
+        exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        String body = "{\"code\":40300,\"error_code\":\"TENANT_SUSPENDED\",\"message\":\"Tenant has been suspended\",\"data\":null}";
+        DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(body.getBytes(StandardCharsets.UTF_8));
+        return exchange.getResponse().writeWith(Mono.just(buffer));
+    }
+
+    private void publishQuotaExceeded(Long tenantId, String period, Long limit) {
+        String dedupKey = "quota-exceeded:" + tenantId + ":" + period;
+        if (domainEventDeduplicator.tryRecord(dedupKey)) {
+            domainEventPublisher.publish(new QuotaExceededEvent(tenantId, period, limit, Instant.now()));
+        }
     }
 
     private long getTomorrowStartMs() {

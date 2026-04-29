@@ -13,10 +13,12 @@ import com.fan.lazyday.interfaces.response.ApiResponse;
 import com.fan.lazyday.interfaces.response.CsrfTokenResponse;
 import com.fan.lazyday.interfaces.response.UserInfoResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
+import java.net.URI;
 import java.util.UUID;
 
 @RestController
@@ -87,6 +89,15 @@ public class PortalAuthHandler implements PortalAuthApi {
         String token = UUID.randomUUID().toString();
         exchange.getResponse().addCookie(CookieUtils.createCsrfTokenCookie(token));
         return wrapSuccess(new CsrfTokenResponse(token));
+    }
+
+    @Override
+    public Mono<Void> verifyEmail(String token, ServerWebExchange exchange) {
+        return authFacade.verifyEmail(token)
+                .then(Mono.fromRunnable(() -> {
+                    exchange.getResponse().setStatusCode(HttpStatus.FOUND);
+                    exchange.getResponse().getHeaders().setLocation(URI.create("/login?verified=1"));
+                }));
     }
 
     private void setAuthCookies(ServerWebExchange exchange, Long userId, Long tenantId, String role, boolean remember) {

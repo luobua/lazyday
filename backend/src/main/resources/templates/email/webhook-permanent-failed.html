@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="'Webhook 推送已永久失败 - ' + ${webhookName}">Webhook 推送已永久失败</title>
+</head>
+<body style="margin:0;background:#f6f7fb;font-family:Arial,'Microsoft YaHei',sans-serif;color:#1f2937;">
+<main style="max-width:640px;margin:0 auto;padding:32px 24px;">
+    <h1 style="margin:0 0 20px;font-size:24px;color:#111827;">Lazyday</h1>
+    <section style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:28px;">
+        <h2 style="margin:0 0 16px;font-size:20px;">Webhook 推送已永久失败</h2>
+        <p style="line-height:1.7;">租户 <strong th:text="${tenantName}">Acme</strong> 的 Webhook <strong th:text="${webhookName}">prod-hook</strong> 已达到最大重试次数。</p>
+        <p style="line-height:1.7;">回调地址：<span th:text="${webhookUrl}">https://example.com/webhook</span></p>
+        <p style="line-height:1.7;">事件类型：<strong th:text="${eventType}">appkey.disabled</strong>，事件 ID：<strong th:text="${eventId}">101</strong></p>
+        <p style="line-height:1.7;">最后 HTTP 状态：<strong th:text="${lastHttpStatus}">500</strong></p>
+        <p style="line-height:1.7;">最后错误：<span th:text="${lastError}">server error</span></p>
+        <p style="margin:28px 0;">
+            <a th:href="${webhookConfigPortalUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;">查看 Webhook 配置</a>
+        </p>
+    </section>
+</main>
+</body>
+</html>

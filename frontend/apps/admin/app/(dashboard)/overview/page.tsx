@@ -1,56 +1,58 @@
 'use client';
 
 import React from 'react';
-import { Card, Col, Row, Statistic, Tag } from 'antd';
-import { TeamOutlined, ApiOutlined, CheckCircleOutlined, CloudOutlined } from '@ant-design/icons';
+import { Card, Col, Row, Statistic, Table } from 'antd';
+import { ApiOutlined, CheckCircleOutlined, CloudOutlined, TeamOutlined } from '@ant-design/icons';
 import { PageHeader } from '@lazyday/ui';
-
-// Mock 数据
-const mockStats = {
-  totalTenants: 128,
-  activeTenants: 95,
-  todayCalls: 89432,
-  successRate: 99.2,
-};
+import { formatNumber } from '@lazyday/utils';
+import { useAdminOverview } from '@/hooks/use-admin-overview';
 
 export default function OverviewPage() {
+  const { data, isLoading } = useAdminOverview();
+
   return (
     <>
       <PageHeader title="系统概览" subtitle="平台运营数据大盘" />
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card variant="borderless">
-            <Statistic title="总租户数" value={mockStats.totalTenants} prefix={<TeamOutlined />} valueStyle={{ color: '#1677ff' }} />
+            <Statistic title="总租户数" value={data?.total_tenants ?? 0} prefix={<TeamOutlined />} loading={isLoading} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card variant="borderless">
-            <Statistic title="活跃租户" value={mockStats.activeTenants} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} />
+            <Statistic title="7 日活跃租户" value={data?.active_tenants_7d ?? 0} prefix={<CheckCircleOutlined />} loading={isLoading} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card variant="borderless">
-            <Statistic title="今日调用量" value={mockStats.todayCalls} prefix={<ApiOutlined />} />
+            <Statistic title="今日调用量" value={data?.today_calls ?? 0} formatter={(value) => formatNumber(Number(value))} prefix={<ApiOutlined />} loading={isLoading} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card variant="borderless">
-            <Statistic title="成功率" value={mockStats.successRate} precision={1} suffix="%" prefix={<CloudOutlined />} valueStyle={{ color: '#722ed1' }} />
+            <Statistic
+              title="今日成功率"
+              value={data?.today_success_rate == null ? 0 : data.today_success_rate * 100}
+              precision={2}
+              suffix="%"
+              prefix={<CloudOutlined />}
+              loading={isLoading}
+            />
           </Card>
         </Col>
       </Row>
-      <Card title="平台状态" variant="borderless">
-        <Row gutter={16}>
-          <Col span={8}>
-            <Tag color="success" style={{ padding: '8px 16px', fontSize: 14 }}>Backend 服务正常</Tag>
-          </Col>
-          <Col span={8}>
-            <Tag color="success" style={{ padding: '8px 16px', fontSize: 14 }}>Edge 网关正常</Tag>
-          </Col>
-          <Col span={8}>
-            <Tag color="processing" style={{ padding: '8px 16px', fontSize: 14 }}>AI 大脑待配置</Tag>
-          </Col>
-        </Row>
+      <Card title="今日 Top10 接口" variant="borderless">
+        <Table
+          rowKey="path"
+          dataSource={data?.top_paths_today ?? []}
+          loading={isLoading}
+          pagination={false}
+          columns={[
+            { title: '路径', dataIndex: 'path', key: 'path' },
+            { title: '调用量', dataIndex: 'call_count', key: 'call_count', width: 160, render: (value: number) => formatNumber(value) },
+          ]}
+        />
       </Card>
     </>
   );

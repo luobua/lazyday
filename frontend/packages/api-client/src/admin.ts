@@ -15,6 +15,9 @@ import type {
   RagConfig,
   AgentConfig,
   WorkflowConfig,
+  AdminTenantSummary,
+  AdminTenantDetail,
+  AdminOverviewMetrics,
 } from '@lazyday/types';
 
 // ========== Admin Auth API ==========
@@ -34,19 +37,22 @@ export const adminAuthApi = {
 
 export const adminTenantApi = {
   list: (params?: { page?: number; size?: number; keyword?: string; status?: string }) =>
-    get<PageResponse<TenantInfo>>(adminClient, '/api/admin/v1/tenants', params as Record<string, unknown>),
+    get<PageResponse<AdminTenantSummary>>(adminClient, '/api/admin/v1/tenants', params as Record<string, unknown>),
 
   detail: (id: number) =>
-    get<TenantInfo & { quota: QuotaInfo }>(adminClient, `/api/admin/v1/tenants/${id}`),
+    get<AdminTenantDetail>(adminClient, `/api/admin/v1/tenants/${id}`),
 
   suspend: (id: number) =>
-    put<void>(adminClient, `/api/admin/v1/tenants/${id}/suspend`),
+    post<AdminTenantSummary>(adminClient, `/api/admin/v1/tenants/${id}/suspend`),
 
-  restore: (id: number) =>
-    put<void>(adminClient, `/api/admin/v1/tenants/${id}/restore`),
+  resume: (id: number) =>
+    post<AdminTenantSummary>(adminClient, `/api/admin/v1/tenants/${id}/resume`),
 
   updateQuota: (id: number, data: OverrideQuotaRequest) =>
-    put<void>(adminClient, `/api/admin/v1/tenants/${id}/quota`, data),
+    put<QuotaInfo>(adminClient, `/api/admin/v1/tenants/${id}/quota`, data),
+
+  overview: () =>
+    get<AdminOverviewMetrics>(adminClient, '/api/admin/v1/overview'),
 };
 
 // ========== Admin Plan API ==========

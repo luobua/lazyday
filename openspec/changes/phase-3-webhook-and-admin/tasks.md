@@ -24,65 +24,65 @@
 
 - [x] 3.1 创建 `domain/webhookconfig/`：`WebhookConfigPO`（@Table("t_webhook_config")）+ `WebhookConfigEntity` + `WebhookConfigAggregation`（含 URL 校验、event_types 解析）+ `WebhookConfigRepository`
 - [x] 3.2 创建 `domain/webhookevent/`：`WebhookEventPO`（@Table("t_webhook_event")）+ `WebhookEventRepository`（含 `selectDueForDispatch()`、`updateToDelivering()`、`updateToFailedForRetry()`、`updateToSucceeded()`、`updateToPermanentFailed()`、`recoverGhostLocks()` 方法）
-- [ ] 3.3 实现 `application/facade/WebhookFacade` + impl：CRUD（含 URL 私有网段拦截 + secret 生成与 AES 加密复用 `AESCryptoUtil`）+ rotate-secret + test-push（构造测试 payload，独立 `WebClient` 调用，不写事件表）
-- [ ] 3.4 实现 `application/service/WebhookSubscriber`：在 `@PostConstruct` 订阅 `DomainEventPublisher.asFlux()`，对每个事件查 active 配置 fan-out 写 `t_webhook_event`（status=pending, next_retry_at=now()）
-- [ ] 3.5 实现 `infrastructure/scheduler/WebhookDispatcher`：`@Scheduled(fixedDelay=service.webhook.dispatchIntervalSeconds*1000)`，每轮 `recoverGhostLocks()` → `selectDueForDispatch(limit=100)` → 批量 `updateToDelivering()` → 异步 `WebClient` 调用 → 根据响应 `updateToSucceeded()` 或 `updateToFailedForRetry()`（达到 maxRetries 则 `updateToPermanentFailed()` 并发 `WebhookPermanentFailedEvent`）
+- [x] 3.3 实现 `application/facade/WebhookFacade` + impl：CRUD（含 URL 私有网段拦截 + secret 生成与 AES 加密复用 `AESCryptoUtil`）+ rotate-secret + test-push（构造测试 payload，独立 `WebClient` 调用，不写事件表）
+- [x] 3.4 实现 `application/service/WebhookSubscriber`：在 `@PostConstruct` 订阅 `DomainEventPublisher.asFlux()`，对每个事件查 active 配置 fan-out 写 `t_webhook_event`（status=pending, next_retry_at=now()）
+- [x] 3.5 实现 `infrastructure/scheduler/WebhookDispatcher`：`@Scheduled(fixedDelay=service.webhook.dispatchIntervalSeconds*1000)`，每轮 `recoverGhostLocks()` → `selectDueForDispatch(limit=100)` → 批量 `updateToDelivering()` → 异步 `WebClient` 调用 → 根据响应 `updateToSucceeded()` 或 `updateToFailedForRetry()`（达到 maxRetries 则 `updateToPermanentFailed()` 并发 `WebhookPermanentFailedEvent`）
 - [x] 3.6 实现 `WebhookSigner`：`HMAC-SHA256(secret, timestamp + "." + body)` → hex
-- [ ] 3.7 实现 `interfaces/handler/PortalWebhookHandler`（@RequestMappingPortalV1）：list / get / create / update / delete / rotate-secret / test 七个端点
+- [x] 3.7 实现 `interfaces/handler/PortalWebhookHandler`（@RequestMappingPortalV1）：list / get / create / update / delete / rotate-secret / test 七个端点
 - [x] 3.8 添加 `service.webhook.*` 配置项到 `ServiceProperties` 与 `application.yaml`
 - [ ] 3.9 集成测试：本地起一个 nginx echo 服务做 webhook 接收方，触发 AppKey 禁用 → 端点收到带签名的 POST → 验证签名头格式
 
 ## 4. Backend — 邮件服务
 
-- [ ] 4.1 添加 `spring-boot-starter-mail` 与 `spring-boot-starter-thymeleaf` 依赖到 `backend/pom.xml`（thymeleaf 仅用于邮件模板渲染，注意 WebFlux 默认 thymeleaf 配置不冲突）
-- [ ] 4.2 实现 `application/service/EmailService` + impl：`Mono<Void> send(toAddresses, subject, templateName, model)`，内部 `Schedulers.boundedElastic()` 包装 Spring `JavaMailSender.send`，未配置 SMTP 时直接 log warn 跳过
-- [ ] 4.3 实现 `infrastructure/email/EmailTemplateRenderer`：用 `ITemplateEngine`（Thymeleaf）渲染 `templates/email/*.html` 到字符串
-- [ ] 4.4 创建 `resources/templates/email/registration-verify.html` / `quota-exceeded.html` / `webhook-permanent-failed.html` 三个 Thymeleaf 模板，含中文文案 + Lazyday 头部品牌
-- [ ] 4.5 实现 `application/service/QuotaExceededEmailSubscriber`：订阅 `DomainEventPublisher`，按 (tenantId, period) 24h 去重，查租户的 TENANT_ADMIN user emails 调用 `EmailService.send`
-- [ ] 4.6 实现 `application/service/WebhookPermanentFailedEmailSubscriber`：订阅 `DomainEventPublisher`，按 (tenantId, configId) 24h 去重发邮件
-- [ ] 4.7 修改 `AuthFacadeImpl.register`：注册成功提交事务后发 registration-verify 邮件（异步、失败 warn 不回滚）
-- [ ] 4.8 实现 `interfaces/handler/PortalAuthHandler.verifyEmail`：`GET /api/portal/v1/auth/verify-email?token=xxx`，token 24h 有效（用 JWT 携带 userId + 用途）
-- [ ] 4.9 单测：dedup 路径、SMTP 不可达时 skip 路径、模板渲染快照测试
+- [x] 4.1 添加 `spring-boot-starter-mail` 与 `spring-boot-starter-thymeleaf` 依赖到 `backend/pom.xml`（thymeleaf 仅用于邮件模板渲染，注意 WebFlux 默认 thymeleaf 配置不冲突）
+- [x] 4.2 实现 `application/service/EmailService` + impl：`Mono<Void> send(toAddresses, subject, templateName, model)`，内部 `Schedulers.boundedElastic()` 包装 Spring `JavaMailSender.send`，未配置 SMTP 时直接 log warn 跳过
+- [x] 4.3 实现 `infrastructure/email/EmailTemplateRenderer`：用 `ITemplateEngine`（Thymeleaf）渲染 `templates/email/*.html` 到字符串
+- [x] 4.4 创建 `resources/templates/email/registration-verify.html` / `quota-exceeded.html` / `webhook-permanent-failed.html` 三个 Thymeleaf 模板，含中文文案 + Lazyday 头部品牌
+- [x] 4.5 实现 `application/service/QuotaExceededEmailSubscriber`：订阅 `DomainEventPublisher`，按 (tenantId, period) 24h 去重，查租户的 TENANT_ADMIN user emails 调用 `EmailService.send`
+- [x] 4.6 实现 `application/service/WebhookPermanentFailedEmailSubscriber`：订阅 `DomainEventPublisher`，按 (tenantId, configId) 24h 去重发邮件
+- [x] 4.7 修改 `AuthFacadeImpl.register`：注册成功提交事务后发 registration-verify 邮件（异步、失败 warn 不回滚）
+- [x] 4.8 实现 `interfaces/handler/PortalAuthHandler.verifyEmail`：`GET /api/portal/v1/auth/verify-email?token=xxx`，token 24h 有效（用 JWT 携带 userId + 用途）
+- [x] 4.9 单测：dedup 路径、SMTP 不可达时 skip 路径、模板渲染快照测试
 
 ## 5. Backend — Phase 2a 配额耗尽事件接入
 
-- [ ] 5.1 修改 `infrastructure/filter/RateLimitWebFilter`：拒绝 daily/monthly 路径上调用 `DomainEventPublisher.publish(QuotaExceededEvent)`（用 `DomainEventDeduplicator` 24h 去重）
-- [ ] 5.2 修改 `RateLimitWebFilter`：在 QPS / quota 评估之前增加 `t_tenant.status='SUSPENDED'` 检查（缓存 30 秒），SUSPENDED 直接 403 + `TENANT_SUSPENDED`
-- [ ] 5.3 修改 `application/facade/QuotaFacadeImpl.updateTenantQuota`：成功 commit 后发 `QuotaPlanChangedEvent`（previous_plan_id == new_plan_id 也发，但完全相同的请求 body 检测幂等并跳过）
-- [ ] 5.4 单测：单租户连续超限 100 次只发布 1 次事件、悬停 24h 后再次触发会发布、SUSPENDED 租户 403 路径
+- [x] 5.1 修改 `infrastructure/filter/RateLimitWebFilter`：拒绝 daily/monthly 路径上调用 `DomainEventPublisher.publish(QuotaExceededEvent)`（用 `DomainEventDeduplicator` 24h 去重）
+- [x] 5.2 修改 `RateLimitWebFilter`：在 QPS / quota 评估之前增加 `t_tenant.status='SUSPENDED'` 检查（缓存 30 秒），SUSPENDED 直接 403 + `TENANT_SUSPENDED`
+- [x] 5.3 修改 `application/facade/QuotaFacadeImpl.updateTenantQuota`：成功 commit 后发 `QuotaPlanChangedEvent`（previous_plan_id == new_plan_id 也发，但完全相同的请求 body 检测幂等并跳过）
+- [x] 5.4 单测：单租户连续超限 100 次只发布 1 次事件、悬停 24h 后再次触发会发布、SUSPENDED 租户 403 路径
 
 ## 6. Backend — Admin 租户管理
 
-- [ ] 6.1 实现 `application/facade/AdminTenantFacade` + impl：`listTenants(query)` / `getTenantDetail(id)` / `suspendTenant(id)` / `resumeTenant(id)` / `getOverview()`
-- [ ] 6.2 实现 `interfaces/handler/AdminTenantHandler`（@RequestMappingAdminV1）：`GET /tenants`（分页 + keyword + status filter）/ `GET /tenants/{id}` / `POST /tenants/{id}/suspend` / `POST /tenants/{id}/resume` / `GET /overview`
-- [ ] 6.3 修改 `domain/tenant/repository/TenantRepository`：增加 `findPage(keyword, status, pageable)` 与 `findDetailWithQuotaAndUsage(id)`（联表 `t_tenant_quota` + `t_quota_plan` + 当日/当月聚合）
-- [ ] 6.4 实现 `application/facade/QuotaFacadeImpl.getOverviewMetrics()`：`total_tenants` / `active_tenants_7d` / `today_calls` / `today_success_rate` / `top_paths_today` 五个指标聚合（可走 `t_call_log` 单次 SQL UNION）
-- [ ] 6.5 修改 `domain/quotaplan/repository/QuotaPlanRepository.findAll`：在返回 DTO 中带 `binding_count`（左连 `t_tenant_quota` GROUP BY plan_id）
-- [ ] 6.6 修改 `AdminPlanHandler` 返回结构带 `binding_count`
+- [x] 6.1 实现 `application/facade/AdminTenantFacade` + impl：`listTenants(query)` / `getTenantDetail(id)` / `suspendTenant(id)` / `resumeTenant(id)` / `getOverview()`
+- [x] 6.2 实现 `interfaces/handler/AdminTenantHandler`（@RequestMappingAdminV1）：`GET /tenants`（分页 + keyword + status filter）/ `GET /tenants/{id}` / `POST /tenants/{id}/suspend` / `POST /tenants/{id}/resume` / `GET /overview`
+- [x] 6.3 修改 `domain/tenant/repository/TenantRepository`：增加 `findPage(keyword, status, pageable)` 与 `findDetailWithQuotaAndUsage(id)`（联表 `t_tenant_quota` + `t_quota_plan` + 当日/当月聚合）
+- [x] 6.4 实现 `application/facade/QuotaFacadeImpl.getOverviewMetrics()`：`total_tenants` / `active_tenants_7d` / `today_calls` / `today_success_rate` / `top_paths_today` 五个指标聚合（可走 `t_call_log` 单次 SQL UNION）
+- [x] 6.5 修改 `domain/quotaplan/repository/QuotaPlanRepository.findAll`：在返回 DTO 中带 `binding_count`（左连 `t_tenant_quota` GROUP BY plan_id）
+- [x] 6.6 修改 `AdminPlanHandler` 返回结构带 `binding_count`
 - [ ] 6.7 集成测试：list / detail / suspend / resume / overview 五个端点端到端，含权限拒绝（非 PLATFORM_ADMIN 返回 403）
 
 ## 7. Frontend — Webhook Portal 页面
 
-- [ ] 7.1 在 `frontend/packages/types` 增加 `WebhookConfig` / `WebhookEventType` / `WebhookCreateRequest` / `WebhookTestResult` 等类型
-- [ ] 7.2 在 `frontend/packages/api-client` 增加 `webhookApi`：list / get / create / update / delete / rotateSecret / test
-- [ ] 7.3 在 `frontend/apps/portal/hooks` 增加 `use-webhooks.ts`（TanStack Query 包装 webhookApi）
-- [ ] 7.4 重写 `frontend/apps/portal/app/(dashboard)/webhooks/page.tsx`：列表 Table + 创建 Modal（事件类型多选 + URL 输入）+ 编辑 Modal + 删除确认 + 启停 + 测试推送 Modal（展示状态码 / 响应头 / 响应体 / 耗时）
-- [ ] 7.5 实现 secret 一次显示弹窗（创建成功 + 轮换成功后 Modal，复制按钮 + 关闭即不再可见）
-- [ ] 7.6 表单校验：URL 必须 https + 事件类型至少选一个
+- [x] 7.1 在 `frontend/packages/types` 增加 `WebhookConfig` / `WebhookEventType` / `WebhookCreateRequest` / `WebhookTestResult` 等类型
+- [x] 7.2 在 `frontend/packages/api-client` 增加 `webhookApi`：list / get / create / update / delete / rotateSecret / test
+- [x] 7.3 在 `frontend/apps/portal/hooks` 增加 `use-webhooks.ts`（TanStack Query 包装 webhookApi）
+- [x] 7.4 重写 `frontend/apps/portal/app/(dashboard)/webhooks/page.tsx`：列表 Table + 创建 Modal（事件类型多选 + URL 输入）+ 编辑 Modal + 删除确认 + 启停 + 测试推送 Modal（展示状态码 / 响应头 / 响应体 / 耗时）
+- [x] 7.5 实现 secret 一次显示弹窗（创建成功 + 轮换成功后 Modal，复制按钮 + 关闭即不再可见）
+- [x] 7.6 表单校验：URL 必须 https + 事件类型至少选一个
 
 ## 8. Frontend — Admin 租户管理页面
 
-- [ ] 8.1 在 `frontend/packages/types` 增加 `AdminTenantSummary` / `AdminTenantDetail` / `AdminOverviewMetrics` 类型
-- [ ] 8.2 在 `frontend/packages/api-client` 增加 `adminTenantApi`：list / detail / suspend / resume / overview
-- [ ] 8.3 在 `frontend/apps/admin/hooks` 增加 `use-admin-tenants.ts` 与 `use-admin-overview.ts`
-- [ ] 8.4 重写 `frontend/apps/admin/app/(dashboard)/tenants/page.tsx`：分页 Table + 搜索框 + 状态筛选 + 详情抽屉 + 暂停/恢复确认 Modal + 改套餐 Modal（选套餐 + 自定义覆盖输入 → `PUT /api/admin/v1/tenants/{id}/quota`）
-- [ ] 8.5 重写 `frontend/apps/admin/app/(dashboard)/overview/page.tsx`：5 个指标卡 + Top10 接口表格（首版可不加 ECharts，纯数字+表格）
+- [x] 8.1 在 `frontend/packages/types` 增加 `AdminTenantSummary` / `AdminTenantDetail` / `AdminOverviewMetrics` 类型
+- [x] 8.2 在 `frontend/packages/api-client` 增加 `adminTenantApi`：list / detail / suspend / resume / overview
+- [x] 8.3 在 `frontend/apps/admin/hooks` 增加 `use-admin-tenants.ts` 与 `use-admin-overview.ts`
+- [x] 8.4 重写 `frontend/apps/admin/app/(dashboard)/tenants/page.tsx`：分页 Table + 搜索框 + 状态筛选 + 详情抽屉 + 暂停/恢复确认 Modal + 改套餐 Modal（选套餐 + 自定义覆盖输入 → `PUT /api/admin/v1/tenants/{id}/quota`）
+- [x] 8.5 重写 `frontend/apps/admin/app/(dashboard)/overview/page.tsx`：5 个指标卡 + Top10 接口表格（首版可不加 ECharts，纯数字+表格）
 
 ## 9. Frontend — Admin 套餐管理页面
 
-- [ ] 9.1 在 `frontend/packages/api-client/adminApi` 调整 `getPlans` 返回结构，包含 `binding_count`
-- [ ] 9.2 重写 `frontend/apps/admin/app/(dashboard)/plans/page.tsx`：Table（含 binding_count 列）+ 新建/编辑 Modal + 禁用确认（含 binding_count > 0 的错误提示）
-- [ ] 9.3 校验表单：limits 必须 > 0，max_app_keys 接受 -1 表示无限
+- [x] 9.1 在 `frontend/packages/api-client/adminApi` 调整 `getPlans` 返回结构，包含 `binding_count`
+- [x] 9.2 重写 `frontend/apps/admin/app/(dashboard)/plans/page.tsx`：Table（含 binding_count 列）+ 新建/编辑 Modal + 禁用确认（含 binding_count > 0 的错误提示）
+- [x] 9.3 校验表单：limits 必须 > 0，max_app_keys 接受 -1 表示无限
 
 ## 10. 端到端联调
 
@@ -106,6 +106,6 @@
 
 ## 12. 文档与归档
 
-- [ ] 12.1 更新 `docs/iteration-plan.md`：在修订记录追加 v0.4 条目，注明 Phase 3 完成 + Phase 2b 仍待启动 + V4 已使用
-- [ ] 12.2 更新 `docs/backend-architecture.md`：Webhook 数据流图 + 邮件服务说明
+- [x] 12.1 更新 `docs/iteration-plan.md`：在修订记录追加 v0.4 条目，注明 Phase 3 完成 + Phase 2b 仍待启动 + V4 已使用
+- [x] 12.2 更新 `docs/backend-architecture.md`：Webhook 数据流图 + 邮件服务说明
 - [ ] 12.3 准备 OpenSpec archive：完成后运行 `/opsx:archive phase-3-webhook-and-admin`

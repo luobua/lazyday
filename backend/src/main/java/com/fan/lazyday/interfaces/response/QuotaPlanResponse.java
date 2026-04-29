@@ -22,4 +22,6 @@ public class QuotaPlanResponse {
     private String status;
     @JsonProperty("create_time")
     private Instant createTime;
+    @JsonProperty("binding_count")
+    private Long bindingCount;
 }
