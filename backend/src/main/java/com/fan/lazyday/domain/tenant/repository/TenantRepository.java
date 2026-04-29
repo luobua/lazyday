@@ -66,7 +66,7 @@ public class TenantRepository {
                 FROM t_tenant t
                 LEFT JOIN t_tenant_quota tq ON tq.tenant_id = t.id
                 LEFT JOIN t_quota_plan qp ON qp.id = tq.plan_id
-                """ + whereSql + """
+                """ + (whereSql.isEmpty() ? "" : whereSql + "\n") + """
                 ORDER BY t.create_time DESC
                 LIMIT :limit OFFSET :offset
                 """;
