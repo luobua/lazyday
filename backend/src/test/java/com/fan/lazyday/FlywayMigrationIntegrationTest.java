@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlywayMigrationIntegrationTest {
 
     @Test
-    @DisplayName("spring-boot:run 等价启动可完成 V3 迁移并创建关键表与分区")
-    void applicationStartup_shouldApplyV3Migration() throws Exception {
+    @DisplayName("spring-boot:run 等价启动可完成 V4 迁移并创建关键表、分区与索引")
+    void applicationStartup_shouldApplyV4Migration() throws Exception {
         String dbName = PostgresTestDatabaseSupport.randomDatabaseName("lazyday_phase2a_startup");
         PostgresTestDatabaseSupport.createDatabase(dbName);
 
@@ -49,8 +49,14 @@ class FlywayMigrationIntegrationTest {
             assertThat(tableExists(dbName, "t_quota_plan")).isTrue();
             assertThat(tableExists(dbName, "t_tenant_quota")).isTrue();
             assertThat(tableExists(dbName, "t_call_log")).isTrue();
+            assertThat(tableExists(dbName, "t_webhook_config")).isTrue();
+            assertThat(tableExists(dbName, "t_webhook_event")).isTrue();
             assertThat(tableExists(dbName, partitionName(currentMonth))).isTrue();
             assertThat(tableExists(dbName, partitionName(nextMonth))).isTrue();
+            assertThat(columnType(dbName, "t_webhook_event", "payload")).isEqualTo("jsonb");
+            assertThat(indexExists(dbName, "idx_webhook_config_tenant")).isTrue();
+            assertThat(indexExists(dbName, "idx_webhook_event_dispatch")).isTrue();
+            assertThat(indexExists(dbName, "idx_webhook_event_tenant_created")).isTrue();
             assertThat(countRows(dbName, "t_tenant_quota")).isEqualTo(countRows(dbName, "t_tenant"));
             assertThat(platformTenantPlanName(dbName)).isEqualTo("Free");
         }
@@ -77,6 +83,35 @@ class FlywayMigrationIntegrationTest {
              ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + tableName)) {
             resultSet.next();
             return resultSet.getLong(1);
+        }
+    }
+
+    private String columnType(String dbName, String tableName, String columnName) throws Exception {
+        String sql = """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='%s' AND column_name='%s'
+                """.formatted(tableName, columnName);
+        try (Connection connection = DriverManager.getConnection(
+                PostgresTestDatabaseSupport.jdbcUrl(dbName),
+                PostgresTestDatabaseSupport.USERNAME,
+                PostgresTestDatabaseSupport.PASSWORD);
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            resultSet.next();
+            return resultSet.getString(1);
+        }
+    }
+
+    private boolean indexExists(String dbName, String indexName) throws Exception {
+        try (Connection connection = DriverManager.getConnection(
+                PostgresTestDatabaseSupport.jdbcUrl(dbName),
+                PostgresTestDatabaseSupport.USERNAME,
+                PostgresTestDatabaseSupport.PASSWORD);
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(
+                     "SELECT 1 FROM pg_indexes WHERE schemaname='public' AND indexname='" + indexName + "'")) {
+            return resultSet.next();
         }
     }
 

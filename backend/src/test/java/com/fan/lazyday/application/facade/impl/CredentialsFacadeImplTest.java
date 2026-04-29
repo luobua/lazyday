@@ -1,8 +1,12 @@
 package com.fan.lazyday.application.facade.impl;
 
+import com.fan.lazyday.domain.event.AppKeyDisabledEvent;
+import com.fan.lazyday.domain.event.AppKeyRotatedEvent;
+import com.fan.lazyday.domain.event.DomainEvent;
 import com.fan.lazyday.domain.appkey.po.AppKey;
 import com.fan.lazyday.domain.appkey.repository.AppKeyRepository;
 import com.fan.lazyday.infrastructure.exception.BizException;
+import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
 import com.fan.lazyday.infrastructure.properties.ServiceProperties;
 import com.fan.lazyday.interfaces.response.AppKeyResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,8 +20,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.relational.core.query.Update;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
 
 import java.time.Instant;
@@ -36,6 +42,8 @@ class CredentialsFacadeImplTest {
 
     @Mock private AppKeyRepository appKeyRepository;
     @Mock private ServiceProperties serviceProperties;
+    @Mock private TransactionalOperator transactionalOperator;
+    @Mock private DomainEventPublisher domainEventPublisher;
 
     private CredentialsFacadeImpl facade;
 
@@ -45,8 +53,11 @@ class CredentialsFacadeImplTest {
 
     @BeforeEach
     void setUp() {
-        facade = new CredentialsFacadeImpl(appKeyRepository, serviceProperties);
+        facade = new CredentialsFacadeImpl(appKeyRepository, serviceProperties, transactionalOperator, domainEventPublisher);
         when(serviceProperties.getEncryptionKey()).thenReturn(ENCRYPTION_KEY);
+        when(transactionalOperator.transactional(any(Mono.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(domainEventPublisher.publish(any(DomainEvent.class))).thenReturn(Sinks.EmitResult.OK);
     }
 
     private AppKey buildAppKey() {
@@ -147,6 +158,13 @@ class CredentialsFacadeImplTest {
 
             ArgumentCaptor<Update> captor = ArgumentCaptor.forClass(Update.class);
             verify(appKeyRepository).updateByIdAndTenantId(eq(APP_KEY_ID), eq(TENANT_ID), captor.capture());
+            ArgumentCaptor<DomainEvent> eventCaptor = ArgumentCaptor.forClass(DomainEvent.class);
+            verify(domainEventPublisher).publish(eventCaptor.capture());
+            assertThat(eventCaptor.getValue()).isInstanceOf(AppKeyDisabledEvent.class);
+            AppKeyDisabledEvent event = (AppKeyDisabledEvent) eventCaptor.getValue();
+            assertThat(event.tenantId()).isEqualTo(TENANT_ID);
+            assertThat(event.appKeyId()).isEqualTo(APP_KEY_ID);
+            assertThat(event.appKeyValue()).isEqualTo("ak_test1234567890123456789012345678");
         }
 
         @Test
@@ -200,6 +218,14 @@ class CredentialsFacadeImplTest {
                         assertThat(response.getAppKey()).isEqualTo("ak_test****5678");
                     })
                     .verifyComplete();
+
+            ArgumentCaptor<DomainEvent> eventCaptor = ArgumentCaptor.forClass(DomainEvent.class);
+            verify(domainEventPublisher).publish(eventCaptor.capture());
+            assertThat(eventCaptor.getValue()).isInstanceOf(AppKeyRotatedEvent.class);
+            AppKeyRotatedEvent event = (AppKeyRotatedEvent) eventCaptor.getValue();
+            assertThat(event.tenantId()).isEqualTo(TENANT_ID);
+            assertThat(event.appKeyId()).isEqualTo(APP_KEY_ID);
+            assertThat(event.previousSecretGraceUntil()).isNotNull();
         }
 
         @Test

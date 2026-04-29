@@ -1,0 +1,29 @@
+fan:
+  service:
+    webhook:
+      dispatch-enabled: true
+      dispatch-interval-seconds: ${SERVICE_WEBHOOK_DISPATCH_INTERVAL_SECONDS:5}
+      http-timeout-ms: ${SERVICE_WEBHOOK_HTTP_TIMEOUT_MS:10000}
+      max-retries: ${SERVICE_WEBHOOK_MAX_RETRIES:5}
+      backoff-sequence: ${SERVICE_WEBHOOK_BACKOFF_SEQUENCE:60,300,1800,7200,21600}
+    email:
+      from: ${SERVICE_EMAIL_FROM:noreply@lazyday.dev}
+
+spring:
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: ${SPRING_MAIL_SSL_ENABLE:true}
+          starttls:
+            enable: ${SPRING_MAIL_STARTTLS_ENABLE:false}
+
+# Aliyun DirectMail commonly uses smtpdm.aliyun.com with port 465 and SSL enabled.
+# Local development can leave SPRING_MAIL_HOST / USERNAME / PASSWORD empty.
+# EmailService will log a warning and skip outbound SMTP sends when transport is unconfigured.

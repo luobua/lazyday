@@ -36,6 +36,8 @@ public class ServiceProperties implements InitializingBean {
     private String internalApiKey;
     private int callLogBufferSize = 10_000;
     private Snowflake snowflake = new Snowflake();
+    private Webhook webhook = new Webhook();
+    private Email email = new Email();
 
     @Override
     public void afterPropertiesSet() throws Exception {
@@ -59,5 +61,21 @@ public class ServiceProperties implements InitializingBean {
     public static class Snowflake {
         private Long workerId;
         private Long dataCenterId;
+    }
+
+    @Getter
+    @Setter
+    public static class Webhook {
+        private boolean dispatchEnabled = true;
+        private int dispatchIntervalSeconds = 5;
+        private int httpTimeoutMs = 10_000;
+        private int maxRetries = 5;
+        private String backoffSequence = "60,300,1800,7200,21600";
+    }
+
+    @Getter
+    @Setter
+    public static class Email {
+        private String from = "noreply@lazyday.dev";
     }
 }

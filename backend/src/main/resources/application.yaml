@@ -9,6 +9,14 @@ fan:
     internal-context-path-v1: /internal/v1
     internal-api-key: ${LAZYDAY_INTERNAL_API_KEY:lazyday-internal-dev-key-32-chars}
     call-log-buffer-size: ${LAZYDAY_CALL_LOG_BUFFER_SIZE:10000}
+    webhook:
+      dispatch-enabled: ${SERVICE_WEBHOOK_DISPATCH_ENABLED:true}
+      dispatch-interval-seconds: ${SERVICE_WEBHOOK_DISPATCH_INTERVAL_SECONDS:5}
+      http-timeout-ms: ${SERVICE_WEBHOOK_HTTP_TIMEOUT_MS:10000}
+      max-retries: ${SERVICE_WEBHOOK_MAX_RETRIES:5}
+      backoff-sequence: ${SERVICE_WEBHOOK_BACKOFF_SEQUENCE:60,300,1800,7200,21600}
+    email:
+      from: ${SERVICE_EMAIL_FROM:noreply@lazyday.dev}
     snowflake:
       worker-id: ${LAZYDAY_SNOWFLAKE_WORKER_ID:1}
       data-center-id: ${LAZYDAY_SNOWFLAKE_DATA_CENTER_ID:1}
@@ -58,9 +66,22 @@ spring:
     locations:
       - classpath:db/migration
       - classpath:db/migration-${database.dialect}
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: ${SPRING_MAIL_SSL_ENABLE:true}
+          starttls:
+            enable: ${SPRING_MAIL_STARTTLS_ENABLE:false}
   ai:
     openai:
-      api-key: sk-0cb1762acd3c4fcab02a247ad41cd5cb
+      api-key: ${SPRING_AI_KEY}
       base-url: https://dashscope.aliyuncs.com/compatible-mode/
       chat:
         options:

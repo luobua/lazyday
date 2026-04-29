@@ -4,14 +4,19 @@ import com.fan.lazyday.application.facade.CredentialsFacade;
 import com.fan.lazyday.domain.appkey.entity.AppKeyEntity;
 import com.fan.lazyday.domain.appkey.po.AppKey;
 import com.fan.lazyday.domain.appkey.repository.AppKeyRepository;
+import com.fan.lazyday.domain.event.AppKeyDisabledEvent;
+import com.fan.lazyday.domain.event.AppKeyRotatedEvent;
+import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
 import com.fan.lazyday.infrastructure.exception.BizException;
 import com.fan.lazyday.infrastructure.properties.ServiceProperties;
 import com.fan.lazyday.interfaces.response.AppKeyResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.relational.core.query.Update;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
 import java.util.List;
 
 @Component
@@ -20,6 +25,8 @@ public class CredentialsFacadeImpl implements CredentialsFacade {
 
     private final AppKeyRepository appKeyRepository;
     private final ServiceProperties serviceProperties;
+    private final TransactionalOperator transactionalOperator;
+    private final DomainEventPublisher domainEventPublisher;
 
     @Override
     public Mono<List<AppKeyResponse>> list(Long tenantId) {
@@ -55,8 +62,15 @@ public class CredentialsFacadeImpl implements CredentialsFacade {
     public Mono<Void> disable(Long tenantId, Long id) {
         return appKeyRepository.findByIdAndTenantId(id, tenantId)
                 .switchIfEmpty(Mono.error(BizException.forbidden("FORBIDDEN_TENANT", "无权操作此资源")))
-                .flatMap(appKey -> appKeyRepository.updateByIdAndTenantId(id, tenantId,
-                        Update.update("status", "DISABLED")))
+                .flatMap(appKey -> transactionalOperator.transactional(
+                                appKeyRepository.updateByIdAndTenantId(id, tenantId, Update.update("status", "DISABLED"))
+                        )
+                        .doOnSuccess(ignored -> domainEventPublisher.publish(new AppKeyDisabledEvent(
+                                tenantId,
+                                id,
+                                appKey.getAppKey(),
+                                Instant.now()
+                        ))))
                 .then();
     }
 
@@ -88,7 +102,14 @@ public class CredentialsFacadeImpl implements CredentialsFacade {
                                 AppKeyResponse response = toMaskedResponse(appKey);
                                 response.setSecretKey(sk);
                                 return response;
-                            });
+                            })
+                            .as(transactionalOperator::transactional)
+                            .doOnSuccess(response -> domainEventPublisher.publish(new AppKeyRotatedEvent(
+                                    tenantId,
+                                    id,
+                                    appKey.getRotatedAt(),
+                                    appKey.getGracePeriodEnd()
+                            )));
                 });
     }
 
