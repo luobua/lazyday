@@ -17,10 +17,13 @@ export interface PageRequest {
 // 分页响应
 export interface PageResponse<T> {
   list: T[];
+  content?: T[];
   total: number;
+  totalElements?: number;
   page: number;
   size: number;
   total_pages: number;
+  totalPages?: number;
 }
 
 // 用户相关

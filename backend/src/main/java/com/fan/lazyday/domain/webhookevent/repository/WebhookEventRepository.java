@@ -19,7 +19,23 @@ public class WebhookEventRepository {
     private final DatabaseClient databaseClient;
 
     public Mono<WebhookEventPO> insert(WebhookEventPO event) {
-        return r2dbcEntityTemplate.insert(event);
+        String sql = """
+                INSERT INTO t_webhook_event (id, tenant_id, config_id, event_type, payload, status, retry_count, next_retry_at, created_time)
+                VALUES (:id, :tenantId, :configId, :eventType, :payload::jsonb, :status, :retryCount, :nextRetryAt, :createdTime)
+                """;
+        return databaseClient.sql(sql)
+                .bind("id", event.getId())
+                .bind("tenantId", event.getTenantId())
+                .bind("configId", event.getConfigId())
+                .bind("eventType", event.getEventType())
+                .bind("payload", event.getPayload())
+                .bind("status", event.getStatus())
+                .bind("retryCount", event.getRetryCount())
+                .bind("nextRetryAt", event.getNextRetryAt())
+                .bind("createdTime", event.getCreatedTime())
+                .fetch()
+                .rowsUpdated()
+                .thenReturn(event);
     }
 
     public Flux<WebhookEventPO> selectDueForDispatch(int limit) {

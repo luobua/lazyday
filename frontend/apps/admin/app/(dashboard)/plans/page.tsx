@@ -35,6 +35,10 @@ interface PlanFormValues {
   max_app_keys: number;
 }
 
+interface ApiError extends Error {
+  error_code?: string;
+}
+
 export default function PlansPage() {
   const [form] = Form.useForm<PlanFormValues>();
   const [editingPlan, setEditingPlan] = useState<QuotaPlan | null>(null);
@@ -97,12 +101,17 @@ export default function PlansPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDisable = async (plan: QuotaPlan) => {
     try {
-      await deletePlanMutation.mutateAsync(id);
-      message.success('套餐已删除');
+      await deletePlanMutation.mutateAsync(plan.id);
+      message.success('套餐已禁用');
     } catch (error) {
-      message.error((error as Error).message || '删除失败');
+      const apiError = error as ApiError;
+      if (apiError.error_code === 'PLAN_IN_USE') {
+        message.error(`该套餐正在被 ${plan.binding_count ?? 0} 个租户使用，无法禁用`);
+      } else {
+        message.error(apiError.message || '禁用失败');
+      }
     }
   };
 
@@ -168,15 +177,21 @@ export default function PlansPage() {
           <Button type="link" onClick={() => openEditModal(record)}>
             编辑
           </Button>
-          <Popconfirm
-            title="确定删除该套餐？"
-            description={(record.binding_count ?? 0) > 0 ? '该套餐已绑定租户，后端会拒绝删除。' : '删除后会软禁用该套餐。'}
-            onConfirm={() => handleDelete(record.id)}
-          >
-            <Button type="link" danger loading={deletePlanMutation.isPending}>
-              删除
+          {(record.binding_count ?? 0) > 0 ? (
+            <Button type="link" danger loading={deletePlanMutation.isPending} onClick={() => handleDisable(record)}>
+              禁用
             </Button>
-          </Popconfirm>
+          ) : (
+            <Popconfirm
+              title={`确认禁用套餐 ${record.name}？`}
+              description="禁用后将不能再绑定到新租户"
+              onConfirm={() => handleDisable(record)}
+            >
+              <Button type="link" danger loading={deletePlanMutation.isPending}>
+                禁用
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },

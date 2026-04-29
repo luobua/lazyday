@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Card, Col, Row, Statistic, Table } from 'antd';
-import { ApiOutlined, CheckCircleOutlined, CloudOutlined, TeamOutlined } from '@ant-design/icons';
+import { ApiOutlined, BarChartOutlined, CheckCircleOutlined, CloudOutlined, TeamOutlined } from '@ant-design/icons';
 import { PageHeader } from '@lazyday/ui';
 import { formatNumber } from '@lazyday/utils';
 import { useAdminOverview } from '@/hooks/use-admin-overview';
@@ -14,29 +14,39 @@ export default function OverviewPage() {
     <>
       <PageHeader title="系统概览" subtitle="平台运营数据大盘" />
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card variant="borderless">
             <Statistic title="总租户数" value={data?.total_tenants ?? 0} prefix={<TeamOutlined />} loading={isLoading} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card variant="borderless">
             <Statistic title="7 日活跃租户" value={data?.active_tenants_7d ?? 0} prefix={<CheckCircleOutlined />} loading={isLoading} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card variant="borderless">
             <Statistic title="今日调用量" value={data?.today_calls ?? 0} formatter={(value) => formatNumber(Number(value))} prefix={<ApiOutlined />} loading={isLoading} />
           </Card>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
           <Card variant="borderless">
             <Statistic
               title="今日成功率"
-              value={data?.today_success_rate == null ? 0 : data.today_success_rate * 100}
+              value={data?.today_success_rate == null ? '-' : data.today_success_rate * 100}
               precision={2}
-              suffix="%"
+              suffix={data?.today_success_rate == null ? undefined : '%'}
               prefix={<CloudOutlined />}
+              loading={isLoading}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card variant="borderless">
+            <Statistic
+              title="今日活跃接口"
+              value={data?.top_paths_today?.length ?? 0}
+              prefix={<BarChartOutlined />}
               loading={isLoading}
             />
           </Card>

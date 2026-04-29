@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminTenantApi } from '@lazyday/api-client';
-import type { OverrideQuotaRequest } from '@lazyday/types';
+import type { AdminTenantSummary, OverrideQuotaRequest, PageResponse } from '@lazyday/types';
 
 export interface AdminTenantQuery {
   page?: number;
@@ -18,9 +18,18 @@ export function useAdminTenants(query: AdminTenantQuery) {
     queryKey: [...TENANTS_KEY, query],
     queryFn: async () => {
       const res = await adminTenantApi.list(query);
-      return res.data;
+      return normalizeTenantPage(res.data);
     },
   });
+}
+
+function normalizeTenantPage(page: PageResponse<AdminTenantSummary>): PageResponse<AdminTenantSummary> {
+  return {
+    ...page,
+    list: page.list ?? page.content ?? [],
+    total: page.total ?? page.totalElements ?? 0,
+    total_pages: page.total_pages ?? page.totalPages ?? 0,
+  };
 }
 
 export function useAdminTenantDetail(id?: number) {
