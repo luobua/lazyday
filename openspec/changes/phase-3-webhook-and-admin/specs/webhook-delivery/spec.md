@@ -128,12 +128,12 @@ The system SHALL run a `WebhookDispatcher` task that periodically pulls due even
 #### Scenario: Pull due events with row-level lock
 
 - **WHEN** dispatch fires
-- **THEN** the system executes `SELECT id FROM t_webhook_event WHERE status='pending' AND next_retry_at <= now() ORDER BY next_retry_at LIMIT 100 FOR UPDATE SKIP LOCKED`, then transitions matched rows to `status='delivering'`, `locked_at=now()`, `locked_by={instance_id}`
+- **THEN** the system executes a single SQL statement of the form `UPDATE t_webhook_event SET status='delivering', locked_at=now(), locked_by={instance_id} WHERE id IN (SELECT id FROM t_webhook_event WHERE status='pending' AND next_retry_at <= now() ORDER BY next_retry_at LIMIT 100 FOR UPDATE SKIP LOCKED) RETURNING *`; the SELECT and UPDATE share a single statement-scoped transaction so the row locks are held until the UPDATE commits
 
 #### Scenario: Cross-replica exclusivity
 
 - **WHEN** two Backend replicas execute dispatch at the same instant
-- **THEN** each replica acquires a disjoint subset of pending rows due to `FOR UPDATE SKIP LOCKED`; no event is delivered twice
+- **THEN** because the claim runs as a single statement, each replica acquires a disjoint subset of pending rows under `FOR UPDATE SKIP LOCKED`; no event is delivered twice
 
 #### Scenario: Recover ghost-locked events
 
@@ -171,7 +171,7 @@ The system SHALL deliver each webhook event via HTTPS POST with HMAC-SHA256 sign
 
 ### Requirement: Retry policy with exponential backoff
 
-The system SHALL retry failed deliveries up to `service.webhook.maxRetries` times (default 5) using the configured backoff sequence.
+The system SHALL make up to `service.webhook.maxRetries` total delivery attempts per event (default 5), using the configured backoff sequence between attempts.
 
 #### Scenario: Schedule next retry
 

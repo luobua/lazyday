@@ -68,6 +68,7 @@ public class JwtAuthWebFilter implements WebFilter {
         return path.endsWith("/auth/login")
                 || path.endsWith("/auth/register")
                 || path.endsWith("/auth/csrf-token")
-                || path.endsWith("/auth/refresh");
+                || path.endsWith("/auth/refresh")
+                || path.endsWith("/auth/verify-email");
     }
 }

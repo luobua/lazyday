@@ -6,6 +6,7 @@ import com.fan.lazyday.domain.user.repository.UserRepository;
 import com.fan.lazyday.domain.webhookconfig.repository.WebhookConfigRepository;
 import com.fan.lazyday.infrastructure.event.DomainEventDeduplicator;
 import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
+import com.fan.lazyday.infrastructure.properties.ServiceProperties;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class WebhookPermanentFailedEmailSubscriber {
     private final TenantRepository tenantRepository;
     private final WebhookConfigRepository webhookConfigRepository;
     private final DomainEventDeduplicator domainEventDeduplicator;
+    private final ServiceProperties serviceProperties;
     private Disposable subscription;
 
     @PostConstruct
@@ -79,7 +81,7 @@ public class WebhookPermanentFailedEmailSubscriber {
                                                 "eventId", event.eventId(),
                                                 "lastHttpStatus", event.lastHttpStatus() == null ? "" : event.lastHttpStatus(),
                                                 "lastError", event.lastError() == null ? "" : event.lastError(),
-                                                "webhookConfigPortalUrl", "/webhooks?id=" + event.configId()
+                                                "webhookConfigPortalUrl", buildPortalUrl("/webhooks?id=" + event.configId())
                                         )
                                 );
                             });
@@ -89,5 +91,11 @@ public class WebhookPermanentFailedEmailSubscriber {
                             event.tenantId(), event.configId(), ex);
                     return Mono.empty();
                 });
+    }
+
+    private String buildPortalUrl(String path) {
+        String host = serviceProperties.getDomainHost();
+        String prefix = serviceProperties.getPortalContextPathV1();
+        return (host == null ? "" : host) + (prefix == null ? "" : prefix) + path;
     }
 }

@@ -9,6 +9,7 @@ import com.fan.lazyday.domain.webhookconfig.po.WebhookConfigPO;
 import com.fan.lazyday.domain.webhookconfig.repository.WebhookConfigRepository;
 import com.fan.lazyday.infrastructure.event.DomainEventDeduplicator;
 import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
+import com.fan.lazyday.infrastructure.properties.ServiceProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,6 +46,13 @@ class EmailSubscriberTest {
     @Mock
     private EmailService emailService;
 
+    private ServiceProperties serviceProperties() {
+        ServiceProperties props = new ServiceProperties();
+        props.setDomainHost("https://portal.lazyday.dev");
+        props.setPortalContextPathV1("/api/portal/v1");
+        return props;
+    }
+
     @Test
     @DisplayName("QuotaExceededEmailSubscriber: 首次事件发给所有 TENANT_ADMIN，24h 内去重")
     void quotaExceeded_shouldSendOnceToTenantAdmins() {
@@ -53,9 +61,10 @@ class EmailSubscriberTest {
                 emailService,
                 userRepository,
                 tenantRepository,
-                new DomainEventDeduplicator()
+                new DomainEventDeduplicator(),
+                serviceProperties()
         );
-        QuotaExceededEvent event = new QuotaExceededEvent(7L, "day", 1000L, Instant.parse("2026-04-29T00:00:00Z"));
+        QuotaExceededEvent event = new QuotaExceededEvent(7L, "day", 1000L, 1234L, Instant.parse("2026-04-29T00:00:00Z"));
 
         when(userRepository.findTenantAdminEmailsByTenantId(7L)).thenReturn(Flux.just("a@example.com", "b@example.com"));
         when(tenantRepository.findById(7L)).thenReturn(Mono.just(tenant()));
@@ -71,6 +80,8 @@ class EmailSubscriberTest {
         assertThat(model.getValue()).containsEntry("tenantName", "Acme");
         assertThat(model.getValue()).containsEntry("period", "day");
         assertThat(model.getValue()).containsEntry("limit", 1000L);
+        assertThat(model.getValue()).containsEntry("usage", 1234L);
+        assertThat(model.getValue()).containsEntry("portalUrl", "https://portal.lazyday.dev/api/portal/v1/quota");
     }
 
     @Test
@@ -81,12 +92,13 @@ class EmailSubscriberTest {
                 emailService,
                 userRepository,
                 tenantRepository,
-                new DomainEventDeduplicator()
+                new DomainEventDeduplicator(),
+                serviceProperties()
         );
 
         when(userRepository.findTenantAdminEmailsByTenantId(7L)).thenReturn(Flux.empty());
 
-        StepVerifier.create(subscriber.handle(new QuotaExceededEvent(7L, "month", 5000L, Instant.now())))
+        StepVerifier.create(subscriber.handle(new QuotaExceededEvent(7L, "month", 5000L, 5500L, Instant.now())))
                 .verifyComplete();
 
         verify(emailService, never()).send(any(), any(), any(), any());
@@ -101,7 +113,8 @@ class EmailSubscriberTest {
                 userRepository,
                 tenantRepository,
                 webhookConfigRepository,
-                new DomainEventDeduplicator()
+                new DomainEventDeduplicator(),
+                serviceProperties()
         );
         WebhookPermanentFailedEvent event = new WebhookPermanentFailedEvent(
                 7L,
@@ -130,6 +143,8 @@ class EmailSubscriberTest {
         assertThat(model.getValue()).containsEntry("webhookName", "prod-hook");
         assertThat(model.getValue()).containsEntry("eventType", "appkey.disabled");
         assertThat(model.getValue()).containsEntry("eventId", 101L);
+        assertThat(model.getValue()).containsEntry("webhookConfigPortalUrl",
+                "https://portal.lazyday.dev/api/portal/v1/webhooks?id=11");
     }
 
     private Tenant tenant() {

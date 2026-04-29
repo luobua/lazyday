@@ -176,7 +176,7 @@ public class RateLimitWebFilter implements WebFilter {
                         long dailyUsage = dailyCounter.sum();
                         if (dailyUsage >= quota.getDailyLimit()) {
                             recordRejected(tenantId, "daily", startNanos);
-                            publishQuotaExceeded(tenantId, "day", quota.getDailyLimit());
+                            publishQuotaExceeded(tenantId, "day", quota.getDailyLimit(), dailyUsage);
                             return reject(exchange, ErrorCode.QUOTA_DAILY_EXCEEDED.getCode(),
                                     quota.getDailyLimit(), 0, getTomorrowStartMs());
                         }
@@ -185,7 +185,7 @@ public class RateLimitWebFilter implements WebFilter {
                             long monthlyUsage = monthlyCounter.sum();
                             if (monthlyUsage >= quota.getMonthlyLimit()) {
                                 recordRejected(tenantId, "monthly", startNanos);
-                                publishQuotaExceeded(tenantId, "month", quota.getMonthlyLimit());
+                                publishQuotaExceeded(tenantId, "month", quota.getMonthlyLimit(), monthlyUsage);
                                 return reject(exchange, ErrorCode.QUOTA_MONTHLY_EXCEEDED.getCode(),
                                         quota.getMonthlyLimit(), 0, getNextMonthStartMs());
                             }
@@ -283,10 +283,10 @@ public class RateLimitWebFilter implements WebFilter {
         return exchange.getResponse().writeWith(Mono.just(buffer));
     }
 
-    private void publishQuotaExceeded(Long tenantId, String period, Long limit) {
+    private void publishQuotaExceeded(Long tenantId, String period, Long limit, long usage) {
         String dedupKey = "quota-exceeded:" + tenantId + ":" + period;
         if (domainEventDeduplicator.tryRecord(dedupKey)) {
-            domainEventPublisher.publish(new QuotaExceededEvent(tenantId, period, limit, Instant.now()));
+            domainEventPublisher.publish(new QuotaExceededEvent(tenantId, period, limit, usage, Instant.now()));
         }
     }
 

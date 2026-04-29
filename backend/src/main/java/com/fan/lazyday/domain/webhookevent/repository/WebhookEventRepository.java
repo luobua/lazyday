@@ -9,7 +9,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
-import java.util.Collection;
 
 @Component
 @RequiredArgsConstructor
@@ -38,38 +37,29 @@ public class WebhookEventRepository {
                 .thenReturn(event);
     }
 
-    public Flux<WebhookEventPO> selectDueForDispatch(int limit) {
-        String sql = """
-                SELECT *
-                FROM t_webhook_event
-                WHERE status = 'pending'
-                  AND next_retry_at <= NOW()
-                ORDER BY next_retry_at
-                LIMIT :limit
-                FOR UPDATE SKIP LOCKED
-                """;
-        return databaseClient.sql(sql)
-                .bind("limit", limit)
-                .map((row, metadata) -> mapRow(row))
-                .all();
-    }
-
-    public Mono<Long> updateToDelivering(Collection<Long> ids, String lockedBy) {
-        if (ids == null || ids.isEmpty()) {
-            return Mono.just(0L);
-        }
+    public Flux<WebhookEventPO> claimDueForDispatch(int limit, String lockedBy) {
+        // Single atomic statement: SELECT FOR UPDATE SKIP LOCKED holds row locks for the
+        // duration of the UPDATE, so two replicas cannot claim the same rows.
         String sql = """
                 UPDATE t_webhook_event
                 SET status = 'delivering',
                     locked_at = NOW(),
                     locked_by = :lockedBy
-                WHERE id = ANY(:ids)
+                WHERE id IN (
+                    SELECT id FROM t_webhook_event
+                    WHERE status = 'pending'
+                      AND next_retry_at <= NOW()
+                    ORDER BY next_retry_at
+                    LIMIT :limit
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING *
                 """;
         return databaseClient.sql(sql)
+                .bind("limit", limit)
                 .bind("lockedBy", lockedBy)
-                .bind("ids", ids.toArray(Long[]::new))
-                .fetch()
-                .rowsUpdated();
+                .map((row, metadata) -> mapRow(row))
+                .all();
     }
 
     public Mono<Long> updateToFailedForRetry(Long id,

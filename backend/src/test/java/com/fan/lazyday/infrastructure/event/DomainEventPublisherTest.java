@@ -20,7 +20,7 @@ class DomainEventPublisherTest {
     @DisplayName("领域事件发布后多个订阅者都能收到")
     void publish_shouldFanOutToMultipleSubscribers() {
         DomainEventPublisher publisher = new DomainEventPublisher(new SimpleMeterRegistry());
-        QuotaExceededEvent event = new QuotaExceededEvent(1L, "day", 100L, Instant.parse("2026-04-29T00:00:00Z"));
+        QuotaExceededEvent event = new QuotaExceededEvent(1L, "day", 100L, 100L, Instant.parse("2026-04-29T00:00:00Z"));
 
         StepVerifier.create(publisher.asFlux().take(1))
                 .then(() -> StepVerifier.create(publisher.asFlux().take(1))
@@ -36,8 +36,8 @@ class DomainEventPublisherTest {
     void publish_whenBufferFull_shouldReturnOverflowAndIncrementCounter() {
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
         DomainEventPublisher publisher = new DomainEventPublisher(1, meterRegistry);
-        QuotaExceededEvent first = new QuotaExceededEvent(1L, "day", 100L, Instant.now());
-        QuotaExceededEvent second = new QuotaExceededEvent(1L, "month", 1000L, Instant.now());
+        QuotaExceededEvent first = new QuotaExceededEvent(1L, "day", 100L, 100L, Instant.now());
+        QuotaExceededEvent second = new QuotaExceededEvent(1L, "month", 1000L, 1000L, Instant.now());
 
         publisher.asFlux().subscribe(new BaseSubscriber<>() {
             @Override

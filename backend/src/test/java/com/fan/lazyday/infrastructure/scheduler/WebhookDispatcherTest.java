@@ -24,11 +24,9 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Instant;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -65,8 +63,7 @@ class WebhookDispatcherTest {
         WebhookEventPO event = event(101L, 0);
 
         when(webhookEventRepository.recoverGhostLocks()).thenReturn(Mono.just(0L));
-        when(webhookEventRepository.selectDueForDispatch(100)).thenReturn(Flux.just(event));
-        when(webhookEventRepository.updateToDelivering(anyCollection(), any())).thenReturn(Mono.just(1L));
+        when(webhookEventRepository.claimDueForDispatch(eq(100), any())).thenReturn(Flux.just(event));
         when(webhookConfigRepository.findByIdAndTenantId(11L, 7L)).thenReturn(Mono.just(config()));
         when(webhookEventRepository.updateToSucceeded(101L, 204)).thenReturn(Mono.just(1L));
 
@@ -86,8 +83,7 @@ class WebhookDispatcherTest {
         WebhookEventPO event = event(101L, 0);
 
         when(webhookEventRepository.recoverGhostLocks()).thenReturn(Mono.just(0L));
-        when(webhookEventRepository.selectDueForDispatch(100)).thenReturn(Flux.just(event));
-        when(webhookEventRepository.updateToDelivering(anyCollection(), any())).thenReturn(Mono.just(1L));
+        when(webhookEventRepository.claimDueForDispatch(eq(100), any())).thenReturn(Flux.just(event));
         when(webhookConfigRepository.findByIdAndTenantId(11L, 7L)).thenReturn(Mono.just(config()));
         when(webhookEventRepository.updateToFailedForRetry(eq(101L), eq(1), any(), eq(500), eq("server error"), eq(null)))
                 .thenReturn(Mono.just(1L));
@@ -109,8 +105,7 @@ class WebhookDispatcherTest {
         WebhookEventPO event = event(101L, 4);
 
         when(webhookEventRepository.recoverGhostLocks()).thenReturn(Mono.just(0L));
-        when(webhookEventRepository.selectDueForDispatch(100)).thenReturn(Flux.just(event));
-        when(webhookEventRepository.updateToDelivering(anyCollection(), any())).thenReturn(Mono.just(1L));
+        when(webhookEventRepository.claimDueForDispatch(eq(100), any())).thenReturn(Flux.just(event));
         when(webhookConfigRepository.findByIdAndTenantId(11L, 7L)).thenReturn(Mono.just(config()));
         when(webhookEventRepository.updateToPermanentFailed(101L, 5, 502, "bad gateway", null)).thenReturn(Mono.just(1L));
 

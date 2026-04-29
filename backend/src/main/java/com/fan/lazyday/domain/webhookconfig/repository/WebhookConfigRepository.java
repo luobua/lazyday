@@ -29,9 +29,21 @@ public class WebhookConfigRepository {
 
     public Flux<WebhookConfigPO> findActiveByTenantIdAndEventType(Long tenantId, String eventType) {
         Criteria criteria = Criteria.where(R2dbcHelper.toFieldName(WebhookConfigPO::getTenantId)).is(tenantId)
-                .and(R2dbcHelper.toFieldName(WebhookConfigPO::getStatus)).is("ACTIVE")
-                .and(R2dbcHelper.toFieldName(WebhookConfigPO::getEventTypes)).like("%" + eventType + "%");
-        return r2dbcEntityTemplate.select(query(criteria), PO_CLASS);
+                .and(R2dbcHelper.toFieldName(WebhookConfigPO::getStatus)).is("ACTIVE");
+        return r2dbcEntityTemplate.select(query(criteria), PO_CLASS)
+                .filter(po -> matchesEventType(po.getEventTypes(), eventType));
+    }
+
+    private boolean matchesEventType(String eventTypesCsv, String eventType) {
+        if (eventTypesCsv == null || eventType == null) {
+            return false;
+        }
+        for (String token : eventTypesCsv.split(",")) {
+            if (eventType.equals(token.trim())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public Mono<WebhookConfigPO> findByIdAndTenantId(Long id, Long tenantId) {

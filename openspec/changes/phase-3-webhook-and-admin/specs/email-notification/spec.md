@@ -36,12 +36,12 @@ The system SHALL provide three Thymeleaf HTML templates under `resources/templat
 #### Scenario: Quota exceeded template
 
 - **WHEN** `EmailService.send` is invoked with `template="quota-exceeded"` and model fields `tenantName`, `period` ∈ {day, month}, `limit`, `usage`, `portalUrl`
-- **THEN** the rendered email subject is `您的 Lazyday 配额已用尽`, and the body shows the period, limit, current usage, and a link to the portal quota page
+- **THEN** the rendered email subject is `您的 Lazyday 配额已用尽`, and the body shows the period, limit, current usage, and a link to the portal quota page; `portalUrl` SHALL be an absolute URL composed by the subscriber from `service.domainHost` + `service.portalContextPathV1` + `/quota`
 
 #### Scenario: Webhook permanent failed template
 
 - **WHEN** `EmailService.send` is invoked with `template="webhook-permanent-failed"` and model fields `tenantName`, `webhookName`, `webhookUrl`, `eventType`, `eventId`, `lastHttpStatus`, `lastError`, `webhookConfigPortalUrl`
-- **THEN** the rendered email subject is `Webhook 推送已永久失败 — {webhookName}`, and the body shows the failed event details and a deeplink to the webhook configuration page
+- **THEN** the rendered email subject is `Webhook 推送已永久失败 — {webhookName}`, and the body shows the failed event details and a deeplink to the webhook configuration page; `webhookConfigPortalUrl` SHALL be an absolute URL composed by the subscriber from `service.domainHost` + `service.portalContextPathV1` + `/webhooks?id={configId}`
 
 ### Requirement: Quota exceeded email triggering
 
@@ -98,4 +98,4 @@ The system SHALL send a verification email to new tenant registrations when an S
 #### Scenario: Email verification endpoint
 
 - **WHEN** the recipient clicks the verification link `GET /api/portal/v1/auth/verify-email?token={token}` within 24 hours
-- **THEN** the system marks the user's email as verified (`t_user.email_verified=true`) and returns a redirect to the portal login page; expired or unknown tokens return HTTP 400 with error_code `EMAIL_VERIFY_INVALID`
+- **THEN** the system marks the user's email as verified (`t_user.email_verified=true`) and returns a redirect to the portal login page; expired or unknown tokens return HTTP 400 with error_code `EMAIL_VERIFY_INVALID`; the endpoint MUST be reachable without an active session (no JWT cookie required) — both `JwtAuthWebFilter` and `RoleAuthorizationFilter` SHALL whitelist `/auth/verify-email` so that the recipient can verify from any browser

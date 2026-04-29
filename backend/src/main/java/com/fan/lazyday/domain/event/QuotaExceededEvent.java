@@ -6,6 +6,7 @@ public record QuotaExceededEvent(
         Long tenantId,
         String period,
         Long limit,
+        Long usage,
         Instant eventTime
 ) implements DomainEvent {
     @Override

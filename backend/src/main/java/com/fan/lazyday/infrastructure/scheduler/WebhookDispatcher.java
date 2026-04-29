@@ -15,7 +15,6 @@ import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.net.InetAddress;
@@ -51,18 +50,9 @@ public class WebhookDispatcher {
             return Mono.empty();
         }
         return webhookEventRepository.recoverGhostLocks()
-                .thenMany(webhookEventRepository.selectDueForDispatch(BATCH_SIZE))
-                .collectList()
-                .flatMap(events -> {
-                    if (events.isEmpty()) {
-                        return Mono.empty();
-                    }
-                    List<Long> ids = events.stream().map(WebhookEventPO::getId).toList();
-                    return webhookEventRepository.updateToDelivering(ids, LOCKED_BY)
-                            .thenMany(Flux.fromIterable(events))
-                            .flatMap(this::deliver)
-                            .then();
-                });
+                .thenMany(webhookEventRepository.claimDueForDispatch(BATCH_SIZE, LOCKED_BY))
+                .flatMap(this::deliver)
+                .then();
     }
 
     private Mono<Void> deliver(WebhookEventPO event) {

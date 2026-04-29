@@ -7,7 +7,7 @@ The system SHALL expose an admin API for listing all tenants with search, filter
 #### Scenario: Paginated list
 
 - **WHEN** an authenticated PLATFORM_ADMIN calls `GET /api/admin/v1/tenants?page=0&size=20`
-- **THEN** the system returns a paginated response with `content` (array of tenant summaries), `totalElements`, `totalPages`, `page`, `size`; each summary includes `id`, `name`, `email`, `status`, `plan_id`, `plan_name`, `created_time`
+- **THEN** the system returns a paginated response with `list` (array of tenant summaries), `total`, `total_pages`, `page`, `size`; each summary includes `id`, `name`, `email`, `status`, `plan_id`, `plan_name`, `created_time`
 
 #### Scenario: Search by name or email
 

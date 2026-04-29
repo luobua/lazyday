@@ -5,6 +5,7 @@ import com.fan.lazyday.domain.tenant.repository.TenantRepository;
 import com.fan.lazyday.domain.user.repository.UserRepository;
 import com.fan.lazyday.infrastructure.event.DomainEventDeduplicator;
 import com.fan.lazyday.infrastructure.event.DomainEventPublisher;
+import com.fan.lazyday.infrastructure.properties.ServiceProperties;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class QuotaExceededEmailSubscriber {
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
     private final DomainEventDeduplicator domainEventDeduplicator;
+    private final ServiceProperties serviceProperties;
     private Disposable subscription;
 
     @PostConstruct
@@ -67,8 +69,8 @@ public class QuotaExceededEmailSubscriber {
                                             "tenantName", tenant.getName(),
                                             "period", event.period(),
                                             "limit", event.limit(),
-                                            "usage", event.limit(),
-                                            "portalUrl", "/quota"
+                                            "usage", event.usage() == null ? event.limit() : event.usage(),
+                                            "portalUrl", buildPortalUrl("/quota")
                                     )
                             ));
                 })
@@ -76,5 +78,11 @@ public class QuotaExceededEmailSubscriber {
                     log.warn("quota exceeded email failed: tenantId={}", event.tenantId(), ex);
                     return Mono.empty();
                 });
+    }
+
+    private String buildPortalUrl(String path) {
+        String host = serviceProperties.getDomainHost();
+        String prefix = serviceProperties.getPortalContextPathV1();
+        return (host == null ? "" : host) + (prefix == null ? "" : prefix) + path;
     }
 }
