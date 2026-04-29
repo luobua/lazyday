@@ -37,11 +37,13 @@ public class RoleAuthorizationFilter implements WebFilter {
                 .flatMap(ctx -> {
                     String requiredRole = path.startsWith("/api/admin/") ? ROLE_PLATFORM_ADMIN : ROLE_TENANT_ADMIN;
                     if (!requiredRole.equals(ctx.getRole())) {
-                        return FilterResponseHelper.writeError(exchange, HttpStatus.FORBIDDEN, "FORBIDDEN_ROLE", "权限不足");
+                        return FilterResponseHelper.writeError(exchange, HttpStatus.FORBIDDEN, "FORBIDDEN_ROLE", "权限不足")
+                                .thenReturn(Boolean.TRUE);
                     }
-                    return chain.filter(exchange);
+                    return chain.filter(exchange).thenReturn(Boolean.TRUE);
                 })
-                .switchIfEmpty(chain.filter(exchange));
+                .switchIfEmpty(Mono.defer(() -> chain.filter(exchange).thenReturn(Boolean.TRUE)))
+                .then();
     }
 
     private boolean isPublicPath(String path) {

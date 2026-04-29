@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, Button, Checkbox, Typography, Space, App } from 'antd';
+import { App, Button, Checkbox, Form, Input, Skeleton, Space, Typography } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -15,7 +15,7 @@ interface LoginFormValues {
   remember?: boolean;
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const loginMutation = useLogin();
@@ -86,5 +86,13 @@ export default function LoginPage() {
         <Link href="/register">立即注册</Link>
       </Space>
     </Form>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <React.Suspense fallback={<Skeleton active paragraph={{ rows: 4 }} />}>
+      <LoginPageContent />
+    </React.Suspense>
   );
 }

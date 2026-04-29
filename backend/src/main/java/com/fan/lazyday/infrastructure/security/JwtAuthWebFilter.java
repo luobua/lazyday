@@ -55,6 +55,9 @@ public class JwtAuthWebFilter implements WebFilter {
     }
 
     private boolean requiresAuth(String path) {
+        if (path.startsWith("/internal/")) {
+            return false;
+        }
         if (!path.startsWith("/api/portal/") && !path.startsWith("/api/admin/")) {
             return false;
         }

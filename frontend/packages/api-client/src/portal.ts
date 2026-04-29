@@ -1,12 +1,11 @@
 import { portalClient, get, post, put, del } from './base';
 import type {
-  ApiResponse,
   AppKeyInfo,
   CreateAppKeyRequest,
   CreateAppKeyResponse,
   CallLogItem,
   CallLogQuery,
-  CallStats,
+  CallLogStats,
   QuotaInfo,
   PageResponse,
   UserInfo,
@@ -78,13 +77,13 @@ export const credentialsApi = {
 
 export const callLogsApi = {
   list: (query: CallLogQuery) =>
-    get<PageResponse<CallLogItem>>(portalClient, '/api/portal/v1/call-logs', query as Record<string, unknown>),
+    get<PageResponse<CallLogItem>>(portalClient, '/api/portal/v1/logs', query as Record<string, unknown>),
 
-  stats: (params?: { days?: number }) =>
-    get<CallStats[]>(portalClient, '/api/portal/v1/call-logs/stats', params as Record<string, unknown>),
+  stats: (params?: Pick<CallLogQuery, 'start_time' | 'end_time'>) =>
+    get<CallLogStats>(portalClient, '/api/portal/v1/logs/stats', params as Record<string, unknown>),
 
   exportCsv: (query: CallLogQuery) =>
-    portalClient.get('/api/portal/v1/call-logs/export', {
+    portalClient.get('/api/portal/v1/logs/export', {
       params: query,
       responseType: 'blob',
     }),

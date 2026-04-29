@@ -31,6 +31,8 @@ public class ServiceProperties implements InitializingBean {
     private String visitorContextPathV1;
     private String portalContextPathV1;
     private String adminContextPathV1;
+    private String internalContextPathV1;
+    private String internalApiKey;
 
     @Override
     public void afterPropertiesSet() throws Exception {
@@ -39,5 +41,7 @@ public class ServiceProperties implements InitializingBean {
         Objects.requireNonNull(secretKey, "secretKey is required");
         Objects.requireNonNull(contextPathV1, "contextPathV1 is required");
         Objects.requireNonNull(openContextPathV1, "openContextPathV1 is required");
+        Objects.requireNonNull(internalContextPathV1, "internalContextPathV1 is required");
+        Objects.requireNonNull(internalApiKey, "internalApiKey is required");
     }
 }

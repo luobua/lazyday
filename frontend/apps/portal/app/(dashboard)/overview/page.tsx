@@ -1,37 +1,34 @@
 'use client';
 
 import React from 'react';
-import { Card, Col, Row, Statistic, Typography, Table, Tag, Empty } from 'antd';
+import { Card, Col, Empty, Row, Skeleton, Space, Statistic, Table, Tag, Typography } from 'antd';
 import {
   ApiOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined,
   ClockCircleOutlined,
   ThunderboltOutlined,
+  FieldTimeOutlined,
 } from '@ant-design/icons';
 import { PageHeader } from '@lazyday/ui';
-import type { CallLogItem } from '@lazyday/types';
-import { formatTimestamp, formatLatency } from '@lazyday/utils';
+import { formatLatency, formatNumber, formatTimestamp, getStatusCodeColor } from '@lazyday/utils';
+import { useCallLogs, useCallLogStats } from '@/hooks/use-logs';
+import { useCredentials } from '@/hooks/use-credentials';
+import { useQuotaUsage } from '@/hooks/use-quota';
 
 const { Text } = Typography;
 
-// Mock 数据（Backend 就绪后替换为 TanStack Query）
-const mockStats = {
-  todayCalls: 12847,
-  successRate: 98.6,
-  avgLatency: 45,
-  activeKeys: 5,
-};
-
-const mockRecentLogs: CallLogItem[] = [
-  { id: 1, tenant_id: 1, app_key: 'ak_demo001', path: '/api/open/v1/ai/chat', method: 'POST', status_code: 200, latency_ms: 342, request_id: 'req_001', created_at: '2026-04-26T10:20:00Z' },
-  { id: 2, tenant_id: 1, app_key: 'ak_demo001', path: '/api/open/v1/ai/tts', method: 'POST', status_code: 200, latency_ms: 1205, request_id: 'req_002', created_at: '2026-04-26T10:19:30Z' },
-  { id: 3, tenant_id: 1, app_key: 'ak_demo002', path: '/api/open/v1/ai/chat', method: 'POST', status_code: 429, latency_ms: 12, request_id: 'req_003', created_at: '2026-04-26T10:19:15Z' },
-  { id: 4, tenant_id: 1, app_key: 'ak_demo001', path: '/api/open/v1/ai/chat', method: 'POST', status_code: 200, latency_ms: 289, request_id: 'req_004', created_at: '2026-04-26T10:18:45Z' },
-  { id: 5, tenant_id: 1, app_key: 'ak_demo002', path: '/api/open/v1/rag/search', method: 'POST', status_code: 500, latency_ms: 3200, request_id: 'req_005', created_at: '2026-04-26T10:18:20Z' },
-];
-
 export default function OverviewPage() {
+  const { data: quota, isLoading: quotaLoading } = useQuotaUsage();
+  const { data: stats, isLoading: statsLoading } = useCallLogStats();
+  const { data: logsPage, isLoading: logsLoading } = useCallLogs({ page: 0, size: 5 });
+  const { data: credentials, isLoading: credentialsLoading } = useCredentials();
+
+  const successRate = stats?.total ? (stats.success_count / stats.total) * 100 : 0;
+  const monthlyUsageRate = quota?.monthly_limit
+    ? (quota.monthly_used / quota.monthly_limit) * 100
+    : 0;
+  const activeKeys = credentials?.filter((item) => item.status === 'ACTIVE').length ?? 0;
+
   const logColumns = [
     {
       title: '接口路径',
@@ -50,8 +47,7 @@ export default function OverviewPage() {
       key: 'status_code',
       width: 100,
       render: (code: number) => {
-        const color = code >= 200 && code < 300 ? 'success' : code >= 400 ? 'error' : 'warning';
-        return <Tag color={color}>{code}</Tag>;
+        return <Tag color={getStatusCodeColor(code)}>{code}</Tag>;
       },
     },
     {
@@ -67,8 +63,8 @@ export default function OverviewPage() {
     },
     {
       title: '时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      dataIndex: 'request_time',
+      key: 'request_time',
       width: 180,
       render: (t: string) => formatTimestamp(t),
     },
@@ -82,9 +78,10 @@ export default function OverviewPage() {
           <Card className="stat-card" variant="borderless">
             <Statistic
               title="今日调用量"
-              value={mockStats.todayCalls}
+              value={quota?.daily_used ?? 0}
               prefix={<ApiOutlined />}
               valueStyle={{ color: '#1677ff' }}
+              loading={quotaLoading}
             />
           </Card>
         </Col>
@@ -92,11 +89,12 @@ export default function OverviewPage() {
           <Card className="stat-card" variant="borderless">
             <Statistic
               title="成功率"
-              value={mockStats.successRate}
+              value={successRate}
               precision={1}
               suffix="%"
               prefix={<CheckCircleOutlined />}
               valueStyle={{ color: '#52c41a' }}
+              loading={statsLoading}
             />
           </Card>
         </Col>
@@ -104,9 +102,11 @@ export default function OverviewPage() {
           <Card className="stat-card" variant="borderless">
             <Statistic
               title="平均延迟"
-              value={mockStats.avgLatency}
+              value={stats?.avg_latency_ms ?? 0}
+              precision={1}
               suffix="ms"
               prefix={<ClockCircleOutlined />}
+              loading={statsLoading}
             />
           </Card>
         </Col>
@@ -114,24 +114,62 @@ export default function OverviewPage() {
           <Card className="stat-card" variant="borderless">
             <Statistic
               title="活跃 AppKey"
-              value={mockStats.activeKeys}
+              value={activeKeys}
               prefix={<ThunderboltOutlined />}
               valueStyle={{ color: '#722ed1' }}
+              loading={credentialsLoading}
             />
           </Card>
         </Col>
       </Row>
 
-      <Card title="最近调用日志" variant="borderless" style={{ marginBottom: 24 }}>
-        <Table
-          dataSource={mockRecentLogs}
-          columns={logColumns}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          locale={{ emptyText: <Empty description="暂无调用记录" /> }}
-        />
-      </Card>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={16}>
+          <Card title="最近调用日志" variant="borderless">
+            <Table
+              dataSource={logsPage?.list ?? []}
+              columns={logColumns}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              loading={logsLoading}
+              locale={{ emptyText: <Empty description="暂无调用记录" /> }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} xl={8}>
+          <Card title="月度配额" variant="borderless">
+            {quotaLoading ? (
+              <Skeleton active paragraph={{ rows: 4 }} />
+            ) : quota ? (
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Statistic
+                  title="套餐"
+                  value={quota.plan_name}
+                  prefix={<FieldTimeOutlined />}
+                />
+                <Statistic
+                  title="月度用量"
+                  value={quota.monthly_used}
+                  formatter={(value) => `${formatNumber(Number(value))} / ${formatNumber(quota.monthly_limit)}`}
+                />
+                <Statistic
+                  title="月度使用率"
+                  value={monthlyUsageRate}
+                  precision={1}
+                  suffix="%"
+                />
+                <Statistic
+                  title="QPS 上限"
+                  value={quota.qps_limit}
+                />
+              </Space>
+            ) : (
+              <Empty description="暂无配额数据" />
+            )}
+          </Card>
+        </Col>
+      </Row>
     </>
   );
 }

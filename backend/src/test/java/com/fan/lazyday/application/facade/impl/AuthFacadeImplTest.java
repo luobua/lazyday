@@ -1,8 +1,12 @@
 package com.fan.lazyday.application.facade.impl;
 
 import com.fan.lazyday.application.service.AuthService;
+import com.fan.lazyday.domain.quotaplan.po.QuotaPlan;
+import com.fan.lazyday.domain.quotaplan.repository.QuotaPlanRepository;
 import com.fan.lazyday.domain.tenant.po.Tenant;
 import com.fan.lazyday.domain.tenant.repository.TenantRepository;
+import com.fan.lazyday.domain.tenantquota.po.TenantQuota;
+import com.fan.lazyday.domain.tenantquota.repository.TenantQuotaRepository;
 import com.fan.lazyday.domain.user.po.User;
 import com.fan.lazyday.domain.user.repository.UserRepository;
 import com.fan.lazyday.infrastructure.exception.BizException;
@@ -17,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.transaction.reactive.TransactionalOperator;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -37,6 +42,8 @@ class AuthFacadeImplTest {
     @Mock private TenantRepository tenantRepository;
     @Mock private UserRepository userRepository;
     @Mock private TransactionalOperator transactionalOperator;
+    @Mock private QuotaPlanRepository quotaPlanRepository;
+    @Mock private TenantQuotaRepository tenantQuotaRepository;
 
     private AuthFacadeImpl authFacade;
 
@@ -45,7 +52,14 @@ class AuthFacadeImplTest {
 
     @BeforeEach
     void setUp() {
-        authFacade = new AuthFacadeImpl(authService, tenantRepository, userRepository, transactionalOperator);
+        authFacade = new AuthFacadeImpl(
+                authService,
+                tenantRepository,
+                userRepository,
+                transactionalOperator,
+                quotaPlanRepository,
+                tenantQuotaRepository
+        );
         // 让 transactionalOperator.transactional() 直接透传 Mono
         when(transactionalOperator.transactional(any(Mono.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -73,6 +87,12 @@ class AuthFacadeImplTest {
             savedTenant.setName("MyTenant");
             when(tenantRepository.insert(any(Tenant.class))).thenReturn(Mono.just(savedTenant));
 
+            QuotaPlan freePlan = new QuotaPlan();
+            freePlan.setId(1L);
+            freePlan.setName("Free");
+            when(quotaPlanRepository.findAllActive()).thenReturn(Flux.just(freePlan));
+            when(tenantQuotaRepository.insert(any(TenantQuota.class))).thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+
             User user = buildUser();
             when(authService.createUser("testuser", "test@example.com", "pass123", TENANT_ID, "TENANT_ADMIN"))
                     .thenReturn(Mono.just(user));
@@ -94,6 +114,11 @@ class AuthFacadeImplTest {
             assertThat(tenantCaptor.getValue().getStatus()).isEqualTo("ACTIVE");
             assertThat(tenantCaptor.getValue().getPlanType()).isEqualTo("FREE");
             assertThat(tenantCaptor.getValue().getContactEmail()).isEqualTo("test@example.com");
+
+            ArgumentCaptor<TenantQuota> tenantQuotaCaptor = ArgumentCaptor.forClass(TenantQuota.class);
+            verify(tenantQuotaRepository).insert(tenantQuotaCaptor.capture());
+            assertThat(tenantQuotaCaptor.getValue().getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(tenantQuotaCaptor.getValue().getPlanId()).isEqualTo(1L);
         }
     }
 

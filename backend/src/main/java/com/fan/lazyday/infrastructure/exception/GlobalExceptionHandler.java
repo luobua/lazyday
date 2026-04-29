@@ -17,14 +17,17 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBizException(BizException ex) {
+        HttpStatus status = ErrorCode.fromCode(ex.getErrorCode())
+                .map(ErrorCode::getHttpStatus)
+                .orElse(ex.getHttpStatus());
         String requestId = UUID.randomUUID().toString();
         ApiResponse<Void> response = ApiResponse.error(
-                ex.getHttpStatus().value() * 100 + ex.getBizCode(),
+                status.value() * 100 + ex.getBizCode(),
                 ex.getErrorCode(),
                 ex.getMessage(),
                 requestId
         );
-        return ResponseEntity.status(ex.getHttpStatus()).body(response);
+        return ResponseEntity.status(status).body(response);
     }
 
     @ExceptionHandler(WebExchangeBindException.class)

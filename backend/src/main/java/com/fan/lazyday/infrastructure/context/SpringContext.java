@@ -7,6 +7,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.util.Lazy;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
@@ -26,9 +27,9 @@ public class SpringContext implements ApplicationContextAware, BeanFactoryAware 
 
     @Override
     public void setApplicationContext(@NonNull ApplicationContext applicationContext) throws BeansException {
-        if (ctxRef.get() == null) {
+        if (shouldReplaceContext(ctxRef.get())) {
             synchronized (SpringContext.class) {
-                if (ctxRef.get() == null) {
+                if (shouldReplaceContext(ctxRef.get())) {
                     SpringContext.ctxRef.set(applicationContext);
                 }
             }
@@ -37,12 +38,8 @@ public class SpringContext implements ApplicationContextAware, BeanFactoryAware 
 
     @Override
     public void setBeanFactory(@NonNull BeanFactory beanFactory) throws BeansException {
-        if (SpringContext.beanFactoryRef.get() == null) {
-            synchronized (SpringContext.class) {
-                if (SpringContext.beanFactoryRef.get() == null && beanFactory instanceof DefaultListableBeanFactory) {
-                    SpringContext.beanFactoryRef.set((DefaultListableBeanFactory) beanFactory);
-                }
-            }
+        if (beanFactory instanceof DefaultListableBeanFactory defaultListableBeanFactory) {
+            SpringContext.beanFactoryRef.set(defaultListableBeanFactory);
         }
     }
 
@@ -85,5 +82,15 @@ public class SpringContext implements ApplicationContextAware, BeanFactoryAware 
 
     public static void destroySingleton(String beanName) {
         beanFactoryRef.get().destroySingleton(beanName);
+    }
+
+    private static boolean shouldReplaceContext(ApplicationContext currentContext) {
+        if (currentContext == null) {
+            return true;
+        }
+        if (currentContext instanceof ConfigurableApplicationContext configurableApplicationContext) {
+            return !configurableApplicationContext.isActive();
+        }
+        return false;
     }
 }

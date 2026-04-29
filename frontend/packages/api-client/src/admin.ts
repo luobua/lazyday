@@ -1,14 +1,17 @@
 import { adminClient, get, post, put, del } from './base';
 import type {
-  ApiResponse,
   UserInfo,
   LoginRequest,
   TenantInfo,
   CallLogItem,
   CallLogQuery,
-  CallStats,
+  CallLogStats,
   PageResponse,
   QuotaInfo,
+  QuotaPlan,
+  CreateQuotaPlanRequest,
+  UpdateQuotaPlanRequest,
+  OverrideQuotaRequest,
   RagConfig,
   AgentConfig,
   WorkflowConfig,
@@ -42,21 +45,21 @@ export const adminTenantApi = {
   restore: (id: number) =>
     put<void>(adminClient, `/api/admin/v1/tenants/${id}/restore`),
 
-  updateQuota: (id: number, data: Partial<QuotaInfo>) =>
-    put<QuotaInfo>(adminClient, `/api/admin/v1/tenants/${id}/quota`, data),
+  updateQuota: (id: number, data: OverrideQuotaRequest) =>
+    put<void>(adminClient, `/api/admin/v1/tenants/${id}/quota`, data),
 };
 
 // ========== Admin Plan API ==========
 
 export const adminPlanApi = {
   list: () =>
-    get<QuotaInfo[]>(adminClient, '/api/admin/v1/plans'),
+    get<QuotaPlan[]>(adminClient, '/api/admin/v1/plans'),
 
-  create: (data: Partial<QuotaInfo>) =>
-    post<QuotaInfo>(adminClient, '/api/admin/v1/plans', data),
+  create: (data: CreateQuotaPlanRequest) =>
+    post<QuotaPlan>(adminClient, '/api/admin/v1/plans', data),
 
-  update: (id: number, data: Partial<QuotaInfo>) =>
-    put<QuotaInfo>(adminClient, `/api/admin/v1/plans/${id}`, data),
+  update: (id: number, data: UpdateQuotaPlanRequest) =>
+    put<QuotaPlan>(adminClient, `/api/admin/v1/plans/${id}`, data),
 
   delete: (id: number) =>
     del<void>(adminClient, `/api/admin/v1/plans/${id}`),
@@ -68,8 +71,8 @@ export const adminCallLogsApi = {
   list: (query: CallLogQuery) =>
     get<PageResponse<CallLogItem>>(adminClient, '/api/admin/v1/call-logs', query as Record<string, unknown>),
 
-  stats: (params?: { days?: number; tenant_id?: number }) =>
-    get<CallStats[]>(adminClient, '/api/admin/v1/call-logs/stats', params as Record<string, unknown>),
+  stats: (params?: Record<string, unknown>) =>
+    get<CallLogStats>(adminClient, '/api/admin/v1/call-logs/stats', params),
 };
 
 // ========== Admin RAG API ==========

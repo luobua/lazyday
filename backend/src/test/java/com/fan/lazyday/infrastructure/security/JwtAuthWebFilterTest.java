@@ -136,6 +136,23 @@ class JwtAuthWebFilterTest {
     }
 
     @Test
+    @DisplayName("/internal/** 路径 → 直接放行")
+    void internalPath_shouldPassThrough() {
+        MockServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/internal/v1/quota/effective").build()
+        );
+
+        WebFilterChain chain = mock(WebFilterChain.class);
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        verify(chain).filter(exchange);
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
     @DisplayName("受保护路径无 access_token cookie → 返回 401")
     void protectedPath_noCookie_shouldReturn401() {
         MockServerWebExchange exchange = MockServerWebExchange.from(

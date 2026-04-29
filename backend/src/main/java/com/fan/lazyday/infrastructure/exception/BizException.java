@@ -17,6 +17,10 @@ public class BizException extends RuntimeException {
         this.errorCode = errorCode;
     }
 
+    public static BizException of(ErrorCode errorCode, String message) {
+        return new BizException(errorCode.getHttpStatus(), 1, errorCode.getCode(), message);
+    }
+
     public static BizException unauthorized(String errorCode, String message) {
         return new BizException(HttpStatus.UNAUTHORIZED, 1, errorCode, message);
     }

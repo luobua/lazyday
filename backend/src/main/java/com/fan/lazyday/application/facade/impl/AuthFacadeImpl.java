@@ -2,8 +2,12 @@ package com.fan.lazyday.application.facade.impl;
 
 import com.fan.lazyday.application.facade.AuthFacade;
 import com.fan.lazyday.application.service.AuthService;
+import com.fan.lazyday.domain.quotaplan.po.QuotaPlan;
+import com.fan.lazyday.domain.quotaplan.repository.QuotaPlanRepository;
 import com.fan.lazyday.domain.tenant.po.Tenant;
 import com.fan.lazyday.domain.tenant.repository.TenantRepository;
+import com.fan.lazyday.domain.tenantquota.po.TenantQuota;
+import com.fan.lazyday.domain.tenantquota.repository.TenantQuotaRepository;
 import com.fan.lazyday.domain.user.po.User;
 import com.fan.lazyday.domain.user.repository.UserRepository;
 import com.fan.lazyday.infrastructure.exception.BizException;
@@ -22,6 +26,8 @@ public class AuthFacadeImpl implements AuthFacade {
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final TransactionalOperator transactionalOperator;
+    private final QuotaPlanRepository quotaPlanRepository;
+    private final TenantQuotaRepository tenantQuotaRepository;
 
     @Override
     public Mono<UserInfoResponse> register(String username, String email, String password, String tenantName) {
@@ -35,7 +41,8 @@ public class AuthFacadeImpl implements AuthFacade {
                     return tenantRepository.insert(tenant);
                 }).flatMap(savedTenant ->
                         authService.createUser(username, email, password, savedTenant.getId(), "TENANT_ADMIN")
-                                .map(user -> toUserInfoResponse(user, savedTenant.getId()))
+                                .flatMap(user -> assignFreePlan(savedTenant.getId())
+                                        .thenReturn(toUserInfoResponse(user, savedTenant.getId())))
                 )
         );
     }
@@ -62,6 +69,18 @@ public class AuthFacadeImpl implements AuthFacade {
         return userRepository.findById(userId)
                 .switchIfEmpty(Mono.error(BizException.notFound("USER_NOT_FOUND", "用户不存在")))
                 .map(user -> toUserInfoResponse(user, user.getTenantId()));
+    }
+
+    private Mono<Void> assignFreePlan(Long tenantId) {
+        return quotaPlanRepository.findAllActive()
+                .filter(plan -> "Free".equalsIgnoreCase(plan.getName()))
+                .next()
+                .flatMap(freePlan -> {
+                    TenantQuota tq = new TenantQuota();
+                    tq.setTenantId(tenantId);
+                    tq.setPlanId(freePlan.getId());
+                    return tenantQuotaRepository.insert(tq).then();
+                });
     }
 
     private UserInfoResponse toUserInfoResponse(User user, Long tenantId) {

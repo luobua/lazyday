@@ -28,10 +28,10 @@ export interface UserInfo {
   id: number;
   username: string;
   email: string;
-  role: 'tenant' | 'admin';
+  role: 'TENANT_ADMIN' | 'PLATFORM_ADMIN' | string;
   tenant_id?: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface LoginRequest {
@@ -64,7 +64,7 @@ export interface AppKeyInfo {
   name: string;
   app_key: string;
   secret_key_masked: string;
-  status: 'active' | 'disabled' | 'deleted';
+  status: 'ACTIVE' | 'DISABLED' | 'DELETED' | 'active' | 'disabled' | 'deleted' | string;
   scopes: string[];
   created_at: string;
   updated_at: string;
@@ -87,14 +87,16 @@ export interface CreateAppKeyResponse {
 // 调用日志
 export interface CallLogItem {
   id: number;
-  tenant_id: number;
   app_key: string;
   path: string;
   method: string;
   status_code: number;
   latency_ms: number;
-  request_id: string;
-  created_at: string;
+  client_ip?: string;
+  request_time: string;
+  tenant_id?: number;
+  request_id?: string;
+  created_at?: string;
 }
 
 export interface CallLogQuery {
@@ -102,18 +104,32 @@ export interface CallLogQuery {
   end_time?: string;
   path?: string;
   status_code?: number;
+  status_code_group?: number;
   app_key?: string;
   page?: number;
   size?: number;
 }
 
-// 调用统计
-export interface CallStats {
-  date: string;
+export interface DailyCallVolume {
+  day: string;
+  count: number;
+  success_count: number;
+}
+
+export interface TopPathCallCount {
+  path: string;
+  count: number;
+}
+
+// 调用统计聚合
+export interface CallLogStats {
   total: number;
-  success: number;
-  failed: number;
+  success_count: number;
+  client_error_count: number;
+  server_error_count: number;
   avg_latency_ms: number;
+  daily_volume: DailyCallVolume[];
+  top_paths: TopPathCallCount[];
 }
 
 // Webhook
@@ -138,9 +154,44 @@ export interface CreateWebhookRequest {
 export interface QuotaInfo {
   plan_name: string;
   qps_limit: number;
+  daily_limit: number;
   monthly_limit: number;
-  monthly_used: number;
   daily_used: number;
+  monthly_used: number;
+}
+
+export interface QuotaPlan {
+  id: number;
+  name: string;
+  qps_limit: number;
+  daily_limit: number;
+  monthly_limit: number;
+  max_app_keys: number;
+  status: string;
+  create_time?: string;
+}
+
+export interface CreateQuotaPlanRequest {
+  name: string;
+  qps_limit: number;
+  daily_limit: number;
+  monthly_limit: number;
+  max_app_keys: number;
+}
+
+export interface UpdateQuotaPlanRequest {
+  name?: string;
+  qps_limit?: number;
+  daily_limit?: number;
+  monthly_limit?: number;
+  max_app_keys?: number;
+}
+
+export interface OverrideQuotaRequest {
+  custom_qps_limit?: number;
+  custom_daily_limit?: number;
+  custom_monthly_limit?: number;
+  custom_max_app_keys?: number;
 }
 
 // RAG
