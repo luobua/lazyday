@@ -14,7 +14,7 @@ export function useCallLogs(query: CallLogQuery) {
   });
 }
 
-export function useCallLogStats(params?: Pick<CallLogQuery, 'start_time' | 'end_time'>) {
+export function useCallLogStats(params?: Pick<CallLogQuery, 'startTime' | 'endTime'>) {
   return useQuery({
     queryKey: ['call-log-stats', params],
     queryFn: async () => {

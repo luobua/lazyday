@@ -15,12 +15,26 @@ import { useCallLogs, useCallLogStats } from '@/hooks/use-logs';
 import { useCredentials } from '@/hooks/use-credentials';
 import { useQuotaUsage } from '@/hooks/use-quota';
 
+import dayjs from 'dayjs';
+
 const { Text } = Typography;
+
+// 默认时间范围：最近 7 天
+const defaultStartTime = dayjs().subtract(7, 'day').startOf('day').toISOString();
+const defaultEndTime = dayjs().endOf('day').toISOString();
 
 export default function OverviewPage() {
   const { data: quota, isLoading: quotaLoading } = useQuotaUsage();
-  const { data: stats, isLoading: statsLoading } = useCallLogStats();
-  const { data: logsPage, isLoading: logsLoading } = useCallLogs({ page: 0, size: 5 });
+  const { data: stats, isLoading: statsLoading } = useCallLogStats({
+    startTime: defaultStartTime,
+    endTime: defaultEndTime,
+  });
+  const { data: logsPage, isLoading: logsLoading } = useCallLogs({
+    page: 0,
+    size: 5,
+    startTime: defaultStartTime,
+    endTime: defaultEndTime,
+  });
   const { data: credentials, isLoading: credentialsLoading } = useCredentials();
 
   const successRate = stats?.total ? (stats.success_count / stats.total) * 100 : 0;

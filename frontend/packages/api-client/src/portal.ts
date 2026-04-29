@@ -79,7 +79,7 @@ export const callLogsApi = {
   list: (query: CallLogQuery) =>
     get<PageResponse<CallLogItem>>(portalClient, '/api/portal/v1/logs', query as Record<string, unknown>),
 
-  stats: (params?: Pick<CallLogQuery, 'start_time' | 'end_time'>) =>
+  stats: (params?: Pick<CallLogQuery, 'startTime' | 'endTime'>) =>
     get<CallLogStats>(portalClient, '/api/portal/v1/logs/stats', params as Record<string, unknown>),
 
   exportCsv: (query: CallLogQuery) =>

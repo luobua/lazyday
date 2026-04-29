@@ -4,10 +4,14 @@ import React, { useState } from 'react';
 import { App, Button, Card, Col, DatePicker, Empty, Form, Input, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { DownloadOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { PageHeader } from '@lazyday/ui';
 import { formatLatency, formatNumber, formatTimestamp, getStatusCodeColor } from '@lazyday/utils';
 import { useCallLogs, useCallLogStats, useExportCallLogs } from '@/hooks/use-logs';
 import type { CallLogQuery } from '@lazyday/types';
+
+const DEFAULT_START_TIME = dayjs().subtract(7, 'day').startOf('day').toISOString();
+const DEFAULT_END_TIME = dayjs().endOf('day').toISOString();
 
 const STATUS_GROUP_OPTIONS = [
   { label: '全部状态', value: undefined },
@@ -17,32 +21,37 @@ const STATUS_GROUP_OPTIONS = [
 ];
 
 interface LogFilterValues {
-  app_key?: string;
+  appKey?: string;
   path?: string;
-  status_code_group?: number;
+  statusCodeGroup?: number;
   range?: [Dayjs, Dayjs];
 }
 
 export default function LogsPage() {
   const [form] = Form.useForm<LogFilterValues>();
-  const [query, setQuery] = useState<CallLogQuery>({ page: 0, size: 20 });
+  const [query, setQuery] = useState<CallLogQuery>({
+    page: 0,
+    size: 20,
+    startTime: DEFAULT_START_TIME,
+    endTime: DEFAULT_END_TIME,
+  });
   const { message } = App.useApp();
 
   const { data: logsPage, isLoading } = useCallLogs(query);
   const { data: stats, isLoading: statsLoading } = useCallLogStats({
-    start_time: query.start_time,
-    end_time: query.end_time,
+    startTime: query.startTime,
+    endTime: query.endTime,
   });
   const exportMutation = useExportCallLogs();
 
   const handleSearch = (values: LogFilterValues) => {
     const range = values.range;
     setQuery({
-      app_key: values.app_key || undefined,
+      appKey: values.appKey || undefined,
       path: values.path || undefined,
-      status_code_group: values.status_code_group,
-      start_time: range?.[0]?.startOf('day').toISOString(),
-      end_time: range?.[1]?.endOf('day').toISOString(),
+      statusCodeGroup: values.statusCodeGroup,
+      startTime: range?.[0]?.startOf('day').toISOString(),
+      endTime: range?.[1]?.endOf('day').toISOString(),
       page: 0,
       size: query.size ?? 20,
     });
@@ -50,7 +59,12 @@ export default function LogsPage() {
 
   const handleReset = () => {
     form.resetFields();
-    setQuery({ page: 0, size: 20 });
+    setQuery({
+      page: 0,
+      size: query.size ?? 20,
+      startTime: DEFAULT_START_TIME,
+      endTime: DEFAULT_END_TIME,
+    });
   };
 
   const handleExport = async () => {
@@ -140,7 +154,7 @@ export default function LogsPage() {
         <Form form={form} layout="vertical" onFinish={handleSearch}>
           <Row gutter={[16, 8]}>
             <Col xs={24} md={12} lg={6}>
-              <Form.Item name="app_key" label="AppKey">
+              <Form.Item name="appKey" label="AppKey">
                 <Input placeholder="输入 AppKey 过滤" allowClear />
               </Form.Item>
             </Col>
@@ -150,7 +164,7 @@ export default function LogsPage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={12} lg={4}>
-              <Form.Item name="status_code_group" label="状态码">
+              <Form.Item name="statusCodeGroup" label="状态码">
                 <Select options={STATUS_GROUP_OPTIONS} allowClear placeholder="全部状态" />
               </Form.Item>
             </Col>

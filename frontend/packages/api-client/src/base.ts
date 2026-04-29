@@ -5,12 +5,12 @@ import type { ApiResponse } from '@lazyday/types';
 let csrfToken: string | null = null;
 let csrfFetching: Promise<string> | null = null;
 
-async function ensureCsrfToken(baseURL: string): Promise<string> {
+async function ensureCsrfToken(baseURL: string, csrfPath: string): Promise<string> {
   if (csrfToken) return csrfToken;
   if (csrfFetching) return csrfFetching;
 
   csrfFetching = axios
-    .get<ApiResponse<{ token: string }>>(`${baseURL}/api/portal/v1/auth/csrf-token`, {
+    .get<ApiResponse<{ token: string }>>(`${baseURL}${csrfPath}`, {
       withCredentials: true,
     })
     .then((res) => {
@@ -33,7 +33,7 @@ const STATE_CHANGING_METHODS = ['post', 'put', 'delete', 'patch'];
  * - baseURL 指向 Edge Gateway（开发环境直连 Backend）
  * - withCredentials: true 自动携带 HTTP-Only Cookie
  */
-function createClient(baseURL: string) {
+function createClient(baseURL: string, csrfPath: string) {
   const client = axios.create({
     baseURL,
     timeout: 15_000,
@@ -51,7 +51,7 @@ function createClient(baseURL: string) {
         const url = config.url || '';
         const isAuthExempt = url.includes('/auth/login') || url.includes('/auth/register');
         if (!isAuthExempt) {
-          const token = await ensureCsrfToken(baseURL);
+          const token = await ensureCsrfToken(baseURL, csrfPath);
           if (token) {
             config.headers.set('X-CSRF-Token', token);
           }
@@ -103,11 +103,13 @@ function createClient(baseURL: string) {
 // Portal 客户端（指向 Backend 的 Portal API）
 export const portalClient = createClient(
   process.env.NEXT_PUBLIC_PORTAL_API_URL || 'http://localhost:8080',
+  '/api/portal/v1/auth/csrf-token',
 );
 
 // Admin 客户端（指向 Backend 的 Admin API）
 export const adminClient = createClient(
   process.env.NEXT_PUBLIC_ADMIN_API_URL || 'http://localhost:8080',
+  '/api/admin/v1/auth/csrf-token',
 );
 
 /**

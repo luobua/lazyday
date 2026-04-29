@@ -100,12 +100,12 @@ export interface CallLogItem {
 }
 
 export interface CallLogQuery {
-  start_time?: string;
-  end_time?: string;
+  startTime?: string;
+  endTime?: string;
   path?: string;
-  status_code?: number;
-  status_code_group?: number;
-  app_key?: string;
+  statusCode?: number;
+  statusCodeGroup?: number;
+  appKey?: string;
   page?: number;
   size?: number;
 }
