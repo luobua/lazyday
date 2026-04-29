@@ -2,6 +2,12 @@
 -- V3: Quota plans, tenant quotas, call logs
 -- =============================================
 
+DO $$ BEGIN
+    IF current_setting('server_version_num')::int < 110000 THEN
+        RAISE EXCEPTION 'PostgreSQL 11+ required for t_call_log declarative partitioning, found %', current_setting('server_version');
+    END IF;
+END $$;
+
 -- Quota plan templates (Free / Pro / Enterprise)
 CREATE TABLE t_quota_plan (
     id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

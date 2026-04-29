@@ -7,18 +7,21 @@ import com.fan.lazyday.infrastructure.security.TenantContext;
 import com.fan.lazyday.interfaces.response.EffectiveQuotaResponse;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import io.github.bucket4j.Refill;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -32,6 +35,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Phase 2a 的进程内限流入口。
@@ -40,11 +44,26 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 25)
-@RequiredArgsConstructor
 public class RateLimitWebFilter implements WebFilter {
 
     private final QuotaFacade quotaFacade;
     private final CallLogRepository callLogRepository;
+    @Nullable
+    private final MeterRegistry meterRegistry;
+
+    public RateLimitWebFilter(QuotaFacade quotaFacade,
+                              CallLogRepository callLogRepository) {
+        this(quotaFacade, callLogRepository, null);
+    }
+
+    @Autowired
+    public RateLimitWebFilter(QuotaFacade quotaFacade,
+                              CallLogRepository callLogRepository,
+                              @Nullable MeterRegistry meterRegistry) {
+        this.quotaFacade = quotaFacade;
+        this.callLogRepository = callLogRepository;
+        this.meterRegistry = meterRegistry;
+    }
 
     private final Cache<Long, BucketHolder> bucketCache = Caffeine.newBuilder()
             .maximumSize(10_000)
@@ -56,9 +75,14 @@ public class RateLimitWebFilter implements WebFilter {
             .expireAfterWrite(Duration.ofSeconds(30))
             .build();
 
-    private final Cache<String, Long> usageCache = Caffeine.newBuilder()
-            .maximumSize(10_000)
-            .expireAfterWrite(Duration.ofSeconds(30))
+    private final Cache<String, LongAdder> dailyUsageCache = Caffeine.newBuilder()
+            .maximumSize(20_000)
+            .expireAfterWrite(Duration.ofDays(1))
+            .build();
+
+    private final Cache<String, LongAdder> monthlyUsageCache = Caffeine.newBuilder()
+            .maximumSize(20_000)
+            .expireAfterWrite(Duration.ofDays(31))
             .build();
 
     @NonNull
@@ -100,6 +124,7 @@ public class RateLimitWebFilter implements WebFilter {
     }
 
     private Mono<Void> enforceRateLimit(Long tenantId, ServerWebExchange exchange, WebFilterChain chain) {
+        long startNanos = System.nanoTime();
         return getEffectiveQuota(tenantId)
                 .flatMap(quota -> {
                     BucketHolder bucketHolder = bucketCache.get(tenantId, key -> newBucketHolder(quota.getQpsLimit()));
@@ -110,25 +135,32 @@ public class RateLimitWebFilter implements WebFilter {
 
                     ConsumptionProbe probe = bucketHolder.bucket().tryConsumeAndReturnRemaining(1);
                     if (!probe.isConsumed()) {
+                        recordRejected(tenantId, "qps", startNanos);
                         return reject(exchange, ErrorCode.RATE_LIMIT_EXCEEDED.getCode(),
                                 quota.getQpsLimit(), probe.getRemainingTokens(), getResetMs(probe));
                     }
 
-                    return getDailyUsage(tenantId).flatMap(dailyUsage -> {
+                    return getDailyCounter(tenantId).flatMap(dailyCounter -> {
+                        long dailyUsage = dailyCounter.sum();
                         if (dailyUsage >= quota.getDailyLimit()) {
+                            recordRejected(tenantId, "daily", startNanos);
                             return reject(exchange, ErrorCode.QUOTA_DAILY_EXCEEDED.getCode(),
                                     quota.getDailyLimit(), 0, getTomorrowStartMs());
                         }
 
-                        return getMonthlyUsage(tenantId).flatMap(monthlyUsage -> {
+                        return getMonthlyCounter(tenantId).flatMap(monthlyCounter -> {
+                            long monthlyUsage = monthlyCounter.sum();
                             if (monthlyUsage >= quota.getMonthlyLimit()) {
+                                recordRejected(tenantId, "monthly", startNanos);
                                 return reject(exchange, ErrorCode.QUOTA_MONTHLY_EXCEEDED.getCode(),
                                         quota.getMonthlyLimit(), 0, getNextMonthStartMs());
                             }
 
                             exchange.getResponse().getHeaders().set("X-RateLimit-Limit", String.valueOf(quota.getQpsLimit()));
                             exchange.getResponse().getHeaders().set("X-RateLimit-Remaining", String.valueOf(probe.getRemainingTokens()));
-                            incrementUsageCache(tenantId, dailyUsage + 1, monthlyUsage + 1);
+                            dailyCounter.increment();
+                            monthlyCounter.increment();
+                            recordAllowed(tenantId, startNanos);
                             return chain.filter(exchange);
                         });
                     });
@@ -145,38 +177,42 @@ public class RateLimitWebFilter implements WebFilter {
                 .doOnNext(quota -> quotaCache.put(tenantId, quota));
     }
 
-    private Mono<Long> getDailyUsage(Long tenantId) {
+    private Mono<LongAdder> getDailyCounter(Long tenantId) {
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         String key = "daily:" + tenantId + ":" + today;
-        Long cached = usageCache.getIfPresent(key);
+        LongAdder cached = dailyUsageCache.getIfPresent(key);
         if (cached != null) {
             return Mono.just(cached);
         }
 
         Instant from = today.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant to = today.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-        return callLogRepository.countByTenantIdAndTimeRange(tenantId, from, to)
-                .doOnNext(count -> usageCache.put(key, count));
+        return warmUpCounter(tenantId, key, from, to, dailyUsageCache);
     }
 
-    private Mono<Long> getMonthlyUsage(Long tenantId) {
+    private Mono<LongAdder> getMonthlyCounter(Long tenantId) {
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         String key = "monthly:" + tenantId + ":" + today.getYear() + "-" + today.getMonthValue();
-        Long cached = usageCache.getIfPresent(key);
+        LongAdder cached = monthlyUsageCache.getIfPresent(key);
         if (cached != null) {
             return Mono.just(cached);
         }
 
         Instant from = today.with(TemporalAdjusters.firstDayOfMonth()).atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant to = today.with(TemporalAdjusters.firstDayOfNextMonth()).atStartOfDay(ZoneOffset.UTC).toInstant();
-        return callLogRepository.countByTenantIdAndTimeRange(tenantId, from, to)
-                .doOnNext(count -> usageCache.put(key, count));
+        return warmUpCounter(tenantId, key, from, to, monthlyUsageCache);
     }
 
-    private void incrementUsageCache(Long tenantId, long dailyUsage, long monthlyUsage) {
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
-        usageCache.put("daily:" + tenantId + ":" + today, dailyUsage);
-        usageCache.put("monthly:" + tenantId + ":" + today.getYear() + "-" + today.getMonthValue(), monthlyUsage);
+    private Mono<LongAdder> warmUpCounter(Long tenantId, String key, Instant from, Instant to, Cache<String, LongAdder> cache) {
+        long startNanos = System.nanoTime();
+        return callLogRepository.countByTenantIdAndTimeRange(tenantId, from, to)
+                .map(count -> {
+                    LongAdder adder = new LongAdder();
+                    adder.add(count);
+                    cache.put(key, adder);
+                    recordWarmup(tenantId, startNanos);
+                    return adder;
+                });
     }
 
     private Mono<Void> reject(ServerWebExchange exchange, String errorCode, long limit, long remaining, long resetMs) {
@@ -222,5 +258,38 @@ public class RateLimitWebFilter implements WebFilter {
     }
 
     private record BucketHolder(Bucket bucket, int limit) {
+    }
+
+    private void recordAllowed(Long tenantId, long startNanos) {
+        if (meterRegistry == null) {
+            return;
+        }
+        meterRegistry.counter("lazyday.ratelimit.allowed", "tenantId", String.valueOf(tenantId), "reason", "allowed").increment();
+        recordLatency(startNanos);
+    }
+
+    private void recordRejected(Long tenantId, String reason, long startNanos) {
+        if (meterRegistry == null) {
+            return;
+        }
+        meterRegistry.counter("lazyday.ratelimit.rejected", "tenantId", String.valueOf(tenantId), "reason", reason).increment();
+        recordLatency(startNanos);
+    }
+
+    private void recordWarmup(Long tenantId, long startNanos) {
+        if (meterRegistry == null) {
+            return;
+        }
+        long elapsedNanos = System.nanoTime() - startNanos;
+        meterRegistry.counter("lazyday.quota.counter.warmup", "tenantId", String.valueOf(tenantId)).increment();
+        if (TimeUnit.NANOSECONDS.toMillis(elapsedNanos) > 200) {
+            meterRegistry.counter("lazyday.quota.counter.warmup.slow", "tenantId", String.valueOf(tenantId)).increment();
+        }
+    }
+
+    private void recordLatency(long startNanos) {
+        Timer.builder("lazyday.ratelimit.latency")
+                .register(meterRegistry)
+                .record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
     }
 }

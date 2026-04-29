@@ -1,5 +1,6 @@
 ## 1. 数据层 — Flyway V3 迁移脚本
 
+- [x] 1.0 在 V3 脚本最顶部加入 PostgreSQL 版本断言：`DO $$ BEGIN IF current_setting('server_version_num')::int < 110000 THEN RAISE EXCEPTION 'PostgreSQL 11+ required for t_call_log declarative partitioning, found %', current_setting('server_version'); END IF; END $$;`
 - [x] 1.1 编写 `V3__init_quota_and_log.sql`：创建 `t_quota_plan`（id, name, qps_limit, daily_limit, monthly_limit, max_app_keys, status, 审计字段）
 - [x] 1.2 同脚本：创建 `t_tenant_quota`（id, tenant_id UNIQUE, plan_id, custom_qps_limit, custom_daily_limit, custom_monthly_limit, custom_max_app_keys, 审计字段 + 索引 idx_tenant_quota_tenant）
 - [x] 1.3 同脚本：创建 `t_call_log` 主表（id BIGINT PK, tenant_id, app_key, path, method, status_code, latency_ms, client_ip, error_msg, request_time）`PARTITION BY RANGE (request_time)`
@@ -30,10 +31,17 @@
 
 ## 5. Backend Application — Facade
 
-- [x] 5.1 创建 `QuotaFacade` 接口（listPlans / createPlan / updatePlan / disablePlan / getEffectiveQuota(tenantId) / bindTenantPlan / overrideTenantQuota）
+- [x] 5.1 创建 `QuotaFacade` 接口（listPlans / createPlan / updatePlan / disablePlan / getEffectiveQuota(tenantId) / bindTenantPlan / overrideTenantQuota / **bindDefaultPlanForTenant(tenantId)**）
 - [x] 5.2 创建 `QuotaFacadeImpl`（事务：bindTenantPlan 使用 TransactionalOperator；自定义覆盖修改实时落库）
+- [x] 5.2.1 实现 `bindDefaultPlanForTenant(tenantId)`：查询 status='ACTIVE' 的 `Free` 套餐 → 在调用方事务上下文中插入 `t_tenant_quota` 行（不开新事务）
 - [x] 5.3 创建 `CallLogFacade` 接口（recordAsync(po) → Mono<Void> / queryPaged / aggregateByHour / aggregateByDay）
 - [x] 5.4 创建 `CallLogFacadeImpl`（recordAsync 内部 .subscribe() 切到 boundedElastic，错误降级 log.warn）
+
+## 5b. 修改 Phase 1 AuthFacadeImpl — 注册流程绑定默认套餐
+
+- [x] 5b.1 修改 `AuthFacadeImpl.register(...)`：在创建 `t_tenant` + `t_user` 之后、提交事务之前调用 `quotaFacade.bindDefaultPlanForTenant(newTenantId)`
+- [x] 5b.2 三个插入必须在同一 `TransactionalOperator` 事务内（任一失败全部回滚）
+- [x] 5b.3 在 `AuthFacadeImplTest` 中追加测试：注册成功后 `t_tenant_quota` 必须有该租户行；模拟 quota 插入失败时 `t_tenant` 也不存在
 
 ## 6. Backend Infrastructure — 路由注解
 
@@ -41,11 +49,14 @@
 - [x] 6.2 在 `ContextPathConfiguration` 注册 internalContextPathV1
 - [x] 6.3 在 `ServiceProperties` 添加 `internalContextPathV1` + `internalApiKey` 属性，`application.yaml` 配置默认值（环境变量覆盖）
 
-## 7. Backend Infrastructure — Internal API 鉴权
+## 7. Backend Infrastructure — Internal API 鉴权（D9 增强版）
 
-- [x] 7.1 在 `JwtAuthWebFilter` 中添加 `/internal/**` 路径豁免逻辑
-- [x] 7.2 创建 `InternalApiKeyFilter`（仅作用于 `/internal/**`，校验 `X-Internal-Api-Key` header；缺失或不匹配返回 403 INTERNAL_AUTH_FAILED）
+- [x] 7.1 在 `JwtAuthWebFilter` 中添加 `/internal/v1/**` 路径豁免逻辑
+- [x] 7.2 创建 `InternalApiKeyFilter`（仅作用于 `/internal/v1/**`，校验 `X-Internal-Api-Key` header；缺失或不匹配返回 403 INTERNAL_AUTH_FAILED）
 - [x] 7.3 配置 Filter Order（在 RoleAuthorizationFilter 之前）
+- [x] 7.4 在 `ServiceProperties` 启动校验 `internalApiKey` 非 null 且长度 ≥ 32；不满足抛 `BeanInitializationException`（fail-closed）
+- [x] 7.5 在 `InternalApiKeyFilter` 中嵌入全局 Bucket4j 桶（单进程 100 QPS）；超限返回 429 INTERNAL_RATE_LIMITED
+- [x] 7.6 创建专用审计 logger `lazyday.internal.audit`（独立配置，便于审计落盘/外发）；成功+失败都写一行 INFO（含 caller_ip / path / tenantId / result）
 
 ## 8. Backend Infrastructure — RateLimitWebFilter
 
@@ -54,7 +65,7 @@
 - [x] 8.3 实现 tenantId 解析（优先 X-Tenant-Id header → 回退 JWT TenantContext）；无 tenant 则跳过
 - [x] 8.4 实现 Bucket Caffeine 缓存（key=tenantId，maxSize=10000，expireAfterAccess=30min）
 - [x] 8.5 实现令牌桶配额（容量 = effective_qps，refill = 每秒 effective_qps）
-- [x] 8.6 实现日/月计数（CallLogRepository.countByTenantIdAndTimeRange + Caffeine 30s TTL 缓存）
+- [x] 8.6 实现日/月计数（D6 修订版）：每 `(tenantId, dayKey)` 与 `(tenantId, monthKey)` 维护 `LongAdder`，存于 Caffeine（maxSize=20000，按日/月边界 expireAfterWrite）；通过限流后 `adder.increment()`；缓存未命中时执行 `CallLogRepository.countByTenantIdAndTimeRange` 暖启动 adder（一次性冷启动成本）
 - [x] 8.7 超限返回 HTTP 429 + 响应头 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` / `Retry-After`
 - [x] 8.8 在源码 javadoc 与类注释中明确"Phase 2b Edge 上线后此 Filter 退化为回源兜底"（design D8）
 
@@ -62,9 +73,15 @@
 
 - [x] 9.1 创建 `CallLogWebFilter`：相同路径前缀过滤（与 RateLimit 保持一致）
 - [x] 9.2 在请求开始记录起始时间戳，在 response `doFinally` 钩子构造 CallLogPO（id 用 SnowflakeId 生成）
+- [x] 9.2.1 `app_key` 取值策略（D11）：X-App-Key header 存在 → 使用其值；否则按路径前缀写入 `__PORTAL__` / `__ADMIN__`
+- [x] 9.2.3 `error_msg` 写入策略：在 filter 包一层 `onErrorResume`/`doOnError` 捕获异常 → 写 `exClass:message`（截断 500 字符）；无异常但 status ≥ 500 → 写响应原因短语；其他情况留 null
+- [x] 9.2.2 `SnowflakeIdWorker` 改造为 Spring `@Bean`（在 `infrastructure/config/IdConfig.java` 集中创建），workerId/dataCenterId 来自 `ServiceProperties.snowflake.{workerId,dataCenterId}`（环境变量覆盖：`LAZYDAY_SNOWFLAKE_WORKER_ID`/`LAZYDAY_SNOWFLAKE_DATA_CENTER_ID`）；CallLogWebFilter 改为构造器注入；启动时若两值缺失抛 `IllegalStateException`（拒绝随机回退，避免多副本 ID 冲突）
 - [x] 9.3 调用 `callLogFacade.recordAsync(po)`（fire-and-forget）
 - [x] 9.4 失败容错：`onErrorResume` log.warn + metric `lazyday.calllog.write.failed`
 - [x] 9.5 配置 Filter Order（在 RateLimitWebFilter 之后）
+- [x] 9.6 在 `CallLogFacadeImpl` 中引入 `Sinks.Many.<CallLog>multicast().onBackpressureBuffer(N)`（默认 N=10000）作为日志写入背压队列；`recordAsync` 改为 `sink.tryEmitNext(po)`；启动时订阅 sink 并以 `boundedElastic` 写库
+- [x] 9.7 队列满时（`tryEmitNext` 返回 `FAIL_OVERFLOW`）：`log.warn` + `meterRegistry.counter("lazyday.calllog.write.shed").increment()`；不阻塞主请求链
+- [x] 9.8 配置可调（`ServiceProperties.callLogBufferSize`，默认 10000）
 
 ## 10. Backend Infrastructure — PartitionScheduler
 
@@ -116,8 +133,16 @@
 
 ## 17. Backend — 错误码
 
-- [x] 17.1 在 ErrorCode 枚举（或常量类）中新增：`RATE_LIMIT_EXCEEDED` (429) / `QUOTA_DAILY_EXCEEDED` (429) / `QUOTA_MONTHLY_EXCEEDED` (429) / `PLAN_IN_USE` (409) / `PLAN_NOT_FOUND` (404) / `INTERNAL_AUTH_FAILED` (403) / `PARTITION_MISSING` (500)
+- [x] 17.1 在 ErrorCode 枚举（或常量类）中新增：`RATE_LIMIT_EXCEEDED` (429) / `QUOTA_DAILY_EXCEEDED` (429) / `QUOTA_MONTHLY_EXCEEDED` (429) / `PLAN_IN_USE` (409) / `PLAN_NOT_FOUND` (404) / `INTERNAL_AUTH_FAILED` (403) / `INTERNAL_RATE_LIMITED` (429) / `PARTITION_MISSING` (500)
 - [x] 17.2 在 GlobalExceptionHandler 中映射上述错误
+
+## 17b. 可观测性指标接入
+
+- [x] 17b.1 在 `RateLimitWebFilter` 注入 `MeterRegistry`：发射 `lazyday.ratelimit.{allowed,rejected}` (tag tenantId, reason) + `lazyday.ratelimit.latency` Timer
+- [x] 17b.2 在配额计数器 warm-up 路径发射 `lazyday.quota.counter.warmup` 与 `lazyday.quota.counter.warmup.slow`（>200ms 触发后者）
+- [x] 17b.3 在 `CallLogFacadeImpl` 写库成功路径发射 `lazyday.calllog.write.success`
+- [x] 17b.4 在 `PartitionScheduler` 发射 `lazyday.partition.scheduler.{created,failed}`
+- [x] 17b.5 验证 `/actuator/prometheus` 端点暴露所有上述指标
 
 ## 18. Backend — 单元测试
 

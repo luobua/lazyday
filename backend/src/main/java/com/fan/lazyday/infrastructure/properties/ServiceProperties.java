@@ -2,6 +2,7 @@ package com.fan.lazyday.infrastructure.properties;
 
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.beans.factory.BeanInitializationException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -33,6 +34,8 @@ public class ServiceProperties implements InitializingBean {
     private String adminContextPathV1;
     private String internalContextPathV1;
     private String internalApiKey;
+    private int callLogBufferSize = 10_000;
+    private Snowflake snowflake = new Snowflake();
 
     @Override
     public void afterPropertiesSet() throws Exception {
@@ -43,5 +46,18 @@ public class ServiceProperties implements InitializingBean {
         Objects.requireNonNull(openContextPathV1, "openContextPathV1 is required");
         Objects.requireNonNull(internalContextPathV1, "internalContextPathV1 is required");
         Objects.requireNonNull(internalApiKey, "internalApiKey is required");
+        if (internalApiKey.length() < 32) {
+            throw new BeanInitializationException("internalApiKey must be at least 32 characters");
+        }
+        if (snowflake.workerId == null || snowflake.dataCenterId == null) {
+            throw new IllegalStateException("fan.service.snowflake.worker-id and data-center-id are required");
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class Snowflake {
+        private Long workerId;
+        private Long dataCenterId;
     }
 }

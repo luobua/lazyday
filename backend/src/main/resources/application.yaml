@@ -7,7 +7,11 @@ fan:
     portal-context-path-v1: /api/portal/v1
     admin-context-path-v1: /api/admin/v1
     internal-context-path-v1: /internal/v1
-    internal-api-key: lazyday-internal-dev-key
+    internal-api-key: ${LAZYDAY_INTERNAL_API_KEY:lazyday-internal-dev-key-32-chars}
+    call-log-buffer-size: ${LAZYDAY_CALL_LOG_BUFFER_SIZE:10000}
+    snowflake:
+      worker-id: ${LAZYDAY_SNOWFLAKE_WORKER_ID:1}
+      data-center-id: ${LAZYDAY_SNOWFLAKE_DATA_CENTER_ID:1}
     encryption-key: xunwei-key
     access-key: xunwei-access-key
     secret-key: xunwei-secret-key
