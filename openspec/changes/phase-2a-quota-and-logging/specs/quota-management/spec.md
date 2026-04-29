@@ -34,6 +34,25 @@ The system SHALL provide reusable quota plan templates that define default `qps_
 - **WHEN** PLATFORM_ADMIN submits `DELETE /api/admin/v1/plans/{id}` for a plan with no tenant bindings
 - **THEN** the system marks the plan `status='DISABLED'` (soft delete) and returns the updated record
 
+### Requirement: Default plan binding on tenant lifecycle
+
+The system SHALL guarantee that every tenant has exactly one `t_tenant_quota` row at all times. This invariant SHALL hold for tenants created before V3 migration AND for tenants registered after V3 migration is applied.
+
+#### Scenario: Backfill existing tenants on migration
+
+- **WHEN** Flyway migration V3 executes against a database that already contains tenants from Phase 1
+- **THEN** the migration creates one `t_tenant_quota` row per existing tenant binding it to the seed `Free` plan, with all `custom_*` fields null
+
+#### Scenario: New tenant registration auto-binds Free plan
+
+- **WHEN** a developer registers a new tenant via `POST /api/portal/v1/auth/register`
+- **THEN** the registration transaction SHALL create the `t_tenant_quota` row binding the new tenant to the `Free` plan atomically with the `t_tenant` and `t_user` inserts; if any of the three inserts fails the entire transaction SHALL roll back
+
+#### Scenario: Plan binding survives tenant suspension
+
+- **WHEN** a PLATFORM_ADMIN suspends a tenant (status change on `t_tenant`)
+- **THEN** the `t_tenant_quota` row SHALL remain unchanged so quota state is preserved across suspend/resume cycles
+
 ### Requirement: Tenant quota binding and override
 
 The system SHALL bind exactly one quota plan to each tenant via `t_tenant_quota`. The system SHALL allow PLATFORM_ADMIN to override individual limit fields per tenant via `custom_*` columns; non-null custom values take precedence over plan defaults.
@@ -80,7 +99,22 @@ The system SHALL expose an authenticated query for the current tenant's effectiv
 #### Scenario: Internal query without valid api key
 
 - **WHEN** a service calls `GET /internal/v1/quota/effective` without `X-Internal-Api-Key` or with an incorrect value
-- **THEN** the system returns HTTP 403 with error_code `INTERNAL_AUTH_FAILED`
+- **THEN** the system returns HTTP 403 with error_code `INTERNAL_AUTH_FAILED` and writes one INFO entry to the `lazyday.internal.audit` logger with caller IP and the failed result
+
+#### Scenario: Application fails to start when internal api key is unset or too short
+
+- **WHEN** the Backend application starts with `service.internalApiKey` empty, missing, or shorter than 32 characters
+- **THEN** the application SHALL fail to start and log the configuration error; no listening port is opened
+
+#### Scenario: Internal API global rate limit
+
+- **WHEN** the global request rate to `/internal/v1/**` exceeds 100 QPS on a single Backend replica
+- **THEN** excess requests return HTTP 429 with error_code `INTERNAL_RATE_LIMITED`, regardless of which tenantId they query
+
+#### Scenario: Successful internal call audited
+
+- **WHEN** a service makes a successful call to `/internal/v1/**` with a valid api key
+- **THEN** one INFO entry is written to the `lazyday.internal.audit` logger containing `{timestamp, caller_ip, path, tenantId, result=ok}`
 
 ### Requirement: Quota data model
 

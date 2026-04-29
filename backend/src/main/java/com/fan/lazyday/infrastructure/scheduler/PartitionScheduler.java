@@ -1,7 +1,9 @@
 package com.fan.lazyday.infrastructure.scheduler;
 
 import lombok.extern.slf4j.Slf4j;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -21,15 +23,22 @@ public class PartitionScheduler {
 
     private final DatabaseClient databaseClient;
     private final Clock clock;
+    @Nullable
+    private final MeterRegistry meterRegistry;
 
     @Autowired
-    public PartitionScheduler(DatabaseClient databaseClient) {
-        this(databaseClient, Clock.systemUTC());
+    public PartitionScheduler(DatabaseClient databaseClient, @Nullable MeterRegistry meterRegistry) {
+        this(databaseClient, Clock.systemUTC(), meterRegistry);
     }
 
     PartitionScheduler(DatabaseClient databaseClient, Clock clock) {
+        this(databaseClient, clock, null);
+    }
+
+    PartitionScheduler(DatabaseClient databaseClient, Clock clock, @Nullable MeterRegistry meterRegistry) {
         this.databaseClient = databaseClient;
         this.clock = clock;
+        this.meterRegistry = meterRegistry;
     }
 
     @Scheduled(cron = "0 0 2 28-31 * ?")
@@ -83,7 +92,15 @@ public class PartitionScheduler {
                     if (exists) {
                         return Mono.empty();
                     }
-                    return databaseClient.sql(sql).then();
+                    return databaseClient.sql(sql).then()
+                            .doOnSuccess(ignored -> counter("lazyday.partition.scheduler.created"))
+                            .doOnError(error -> counter("lazyday.partition.scheduler.failed"));
                 });
+    }
+
+    private void counter(String name) {
+        if (meterRegistry != null) {
+            meterRegistry.counter(name).increment();
+        }
     }
 }

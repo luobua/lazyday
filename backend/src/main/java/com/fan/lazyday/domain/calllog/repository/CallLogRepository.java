@@ -1,9 +1,9 @@
 package com.fan.lazyday.domain.calllog.repository;
 
 import com.fan.lazyday.domain.calllog.po.CallLog;
-import com.fan.lazyday.infrastructure.helper.R2dbcHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -42,7 +42,13 @@ public class CallLogRepository {
                                               Instant from, Instant to, int page, int size) {
         List<Criteria> criteriaList = buildFilterCriteria(tenantId, appKey, path, statusCode, statusCodeGroup, from, to);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "request_time"));
-        return R2dbcHelper.findPage(criteriaList, pageable, PO_CLASS, c -> c);
+        Query baseQuery = Query.query(Criteria.from(criteriaList));
+        Query pageQuery = baseQuery.with(pageable);
+        return Mono.zip(
+                        r2dbcEntityTemplate.select(pageQuery, PO_CLASS).collectList(),
+                        r2dbcEntityTemplate.count(baseQuery, PO_CLASS)
+                )
+                .map(tuple -> new PageImpl<>(tuple.getT1(), pageable, tuple.getT2()));
     }
 
     public Flux<CallLog> findAllByTenantId(Long tenantId, String appKey, String path,

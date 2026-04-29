@@ -24,8 +24,8 @@ public final class CookieUtils {
     public static ResponseCookie createCsrfTokenCookie(String token) {
         return ResponseCookie.from(CSRF_TOKEN_COOKIE, token)
                 .httpOnly(false)
-                .secure(isSecure())
-                .sameSite("Lax")
+                .secure(true)
+                .sameSite("Strict")
                 .path("/")
                 .build();
     }
@@ -37,24 +37,11 @@ public final class CookieUtils {
     private static ResponseCookie buildSecureCookie(String name, String value, Duration maxAge, boolean httpOnly) {
         return ResponseCookie.from(name, value)
                 .httpOnly(httpOnly)
-                .secure(isSecure())
-                .sameSite("Lax")
+                .secure(true)
+                .sameSite("Strict")
                 .path("/")
                 .maxAge(maxAge)
                 .build();
     }
 
-    /**
-     * 根据域名协议判断 Cookie 是否需要 Secure 标志。
-     * 开发环境 (http://localhost) 不需要 Secure，生产环境 (https) 需要。
-     */
-    private static boolean isSecure() {
-        // 通过环境变量或系统属性判断，默认开发环境 http 不需要 Secure
-        String env = System.getenv("LAZYDAY_COOKIE_SECURE");
-        if (env != null) {
-            return Boolean.parseBoolean(env);
-        }
-        // 默认非 Secure（兼容本地开发 http）
-        return false;
-    }
 }

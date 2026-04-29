@@ -4,32 +4,70 @@ import com.fan.lazyday.application.facade.CallLogFacade;
 import com.fan.lazyday.domain.calllog.po.CallLog;
 import com.fan.lazyday.domain.calllog.repository.CallLogRepository;
 import com.fan.lazyday.infrastructure.exception.ErrorCode;
+import com.fan.lazyday.infrastructure.properties.ServiceProperties;
 import com.fan.lazyday.interfaces.response.CallLogResponse;
 import com.fan.lazyday.interfaces.response.CallLogStatsResponse;
 import com.fan.lazyday.interfaces.response.PageResponse;
-import lombok.RequiredArgsConstructor;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Instant;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class CallLogFacadeImpl implements CallLogFacade {
 
     private final CallLogRepository callLogRepository;
+    private final MeterRegistry meterRegistry;
+    private final Sinks.Many<CallLog> sink;
+
+    public CallLogFacadeImpl(CallLogRepository callLogRepository) {
+        this(callLogRepository, new ServiceProperties(), null);
+    }
+
+    @Autowired
+    public CallLogFacadeImpl(CallLogRepository callLogRepository,
+                             ServiceProperties serviceProperties,
+                             @Nullable MeterRegistry meterRegistry) {
+        this.callLogRepository = callLogRepository;
+        this.meterRegistry = meterRegistry;
+        this.sink = Sinks.many()
+                .multicast()
+                .onBackpressureBuffer(Math.max(serviceProperties.getCallLogBufferSize(), 1), false);
+    }
+
+    @PostConstruct
+    void subscribeWriter() {
+        sink.asFlux()
+                .flatMap(callLog -> callLogRepository.insert(callLog)
+                        .subscribeOn(Schedulers.boundedElastic())
+                        .doOnSuccess(ignored -> counter("lazyday.calllog.write.success"))
+                        .doOnError(error -> {
+                            counter("lazyday.calllog.write.failed");
+                            logFailure(error);
+                        })
+                        .onErrorResume(error -> Mono.empty()))
+                .subscribe();
+    }
 
     @Override
     public Mono<Void> recordAsync(CallLog callLog) {
-        callLogRepository.insert(callLog)
-                .subscribeOn(Schedulers.boundedElastic())
-                .doOnError(error -> logFailure(error))
-                .onErrorResume(error -> Mono.empty())
-                .subscribe();
+        Sinks.EmitResult result = sink.tryEmitNext(callLog);
+        if (result == Sinks.EmitResult.FAIL_OVERFLOW) {
+            log.warn("Call log buffer is full, shedding log id={}", callLog.getId());
+            counter("lazyday.calllog.write.shed");
+        } else if (result.isFailure()) {
+            log.warn("Failed to enqueue call log id={}, result={}", callLog.getId(), result);
+            counter("lazyday.calllog.write.failed");
+        }
         return Mono.empty();
     }
 
@@ -152,5 +190,11 @@ public class CallLogFacadeImpl implements CallLogFacade {
     private boolean isPartitionMissing(Throwable error) {
         String message = error.getMessage();
         return message != null && message.contains("no partition of relation");
+    }
+
+    private void counter(String name) {
+        if (meterRegistry != null) {
+            meterRegistry.counter(name).increment();
+        }
     }
 }
