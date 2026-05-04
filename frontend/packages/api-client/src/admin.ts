@@ -1,5 +1,6 @@
 import { adminClient, get, post, put, del } from './base';
 import type {
+  ApiResponse,
   UserInfo,
   LoginRequest,
   TenantInfo,
@@ -18,6 +19,9 @@ import type {
   AdminTenantSummary,
   AdminTenantDetail,
   AdminOverviewMetrics,
+  DispatchLog,
+  DispatchLogQuery,
+  EdgeStatus,
 } from '@lazyday/types';
 
 // ========== Admin Auth API ==========
@@ -120,3 +124,56 @@ export const adminBrainConfigApi = {
   dispatch: (tenantId: number) =>
     post<{ request_id: string }>(adminClient, `/api/admin/v1/brain-configs/${tenantId}/dispatch`),
 };
+
+// ========== Internal Dispatch API ==========
+
+export const dispatchApi = {
+  listLogs: (params?: DispatchLogQuery) =>
+    localGet<PageResponse<DispatchLog>>('/api/internal/dispatch/logs', params as Record<string, unknown>),
+
+  getLog: (msgId: string) =>
+    localGet<DispatchLog>(`/api/internal/dispatch/logs/${msgId}`),
+
+  postDispatch: (tenantId: number, payload: unknown) =>
+    localPost<{ msgId: string }>(`/api/internal/dispatch/${tenantId}`, payload),
+
+  getEdgeStatus: () =>
+    localGet<EdgeStatus>('/api/internal/edge/status'),
+};
+
+async function localGet<T>(path: string, params?: Record<string, unknown>): Promise<ApiResponse<T>> {
+  const query = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => query.append(key, String(item)));
+    } else {
+      query.set(key, String(value));
+    }
+  });
+  const response = await fetch(`${adminBasePath()}${path}${query.size ? `?${query.toString()}` : ''}`, {
+    credentials: 'include',
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+}
+
+async function localPost<T>(path: string, payload: unknown): Promise<ApiResponse<T>> {
+  const response = await fetch(`${adminBasePath()}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+}
+
+function adminBasePath() {
+  return process.env.NEXT_PUBLIC_ADMIN_BASE_PATH || '/admin';
+}

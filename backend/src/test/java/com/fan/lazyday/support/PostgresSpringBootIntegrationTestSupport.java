@@ -22,6 +22,8 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -75,6 +77,7 @@ public abstract class PostgresSpringBootIntegrationTestSupport {
     @BeforeEach
     void resetDatabaseState() {
         executeStatements(List.of(
+                "DELETE FROM t_brain_dispatch_log",
                 "DELETE FROM t_call_log",
                 "DELETE FROM t_app_key",
                 "DELETE FROM t_tenant_quota WHERE tenant_id IN (SELECT id FROM t_tenant WHERE name <> 'Lazyday Platform')",
@@ -153,6 +156,7 @@ public abstract class PostgresSpringBootIntegrationTestSupport {
     }
 
     protected void insertCallLog(Long tenantId, String appKey, String path, short statusCode, Instant requestTime) {
+        ensureCallLogPartition(requestTime);
         CallLog callLog = new CallLog();
         callLog.setId(CALL_LOG_ID_SEQUENCE.incrementAndGet());
         callLog.setTenantId(tenantId);
@@ -180,6 +184,16 @@ public abstract class PostgresSpringBootIntegrationTestSupport {
                 .bind("requestTime", callLog.getRequestTime())
                 .then()
                 .block();
+    }
+
+    private void ensureCallLogPartition(Instant requestTime) {
+        var month = requestTime.atZone(ZoneOffset.UTC).toLocalDate().withDayOfMonth(1);
+        var nextMonth = month.plusMonths(1);
+        DateTimeFormatter suffixFormatter = DateTimeFormatter.ofPattern("yyyy_MM");
+        String partitionName = "t_call_log_" + month.format(suffixFormatter);
+        String sql = "CREATE TABLE IF NOT EXISTS " + partitionName
+                + " PARTITION OF t_call_log FOR VALUES FROM ('" + month + "') TO ('" + nextMonth + "')";
+        databaseClient.sql(sql).then().block();
     }
 
     protected WebTestClient.RequestHeadersSpec<?> authenticatedGet(String uri, String accessToken) {

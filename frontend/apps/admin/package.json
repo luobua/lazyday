@@ -6,29 +6,39 @@
     "dev": "next dev -p 3002",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "test": "vitest run",
     "clean": "rm -rf .next node_modules"
   },
   "dependencies": {
+    "@ant-design/icons": "^5.6.0",
+    "@ant-design/nextjs-registry": "^1.0.2",
+    "@lazyday/api-client": "workspace:*",
+    "@lazyday/types": "workspace:*",
+    "@lazyday/ui": "workspace:*",
+    "@lazyday/utils": "workspace:*",
+    "@tanstack/react-query": "^5.72.0",
+    "antd": "^5.24.0",
+    "axios": "^1.9.0",
+    "dayjs": "^1.11.13",
     "next": "^15.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "antd": "^5.24.0",
-    "@ant-design/icons": "^5.6.0",
-    "@ant-design/nextjs-registry": "^1.0.2",
-    "@lazyday/types": "workspace:*",
-    "@lazyday/utils": "workspace:*",
-    "@lazyday/api-client": "workspace:*",
-    "@lazyday/ui": "workspace:*",
-    "zustand": "^5.0.5",
-    "@tanstack/react-query": "^5.72.0",
-    "axios": "^1.9.0",
-    "dayjs": "^1.11.13"
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
-    "typescript": "^5.8.0",
+    "@eslint/eslintrc": "^3.3.5",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0"
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^15.5.15",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.5"
   }
 }

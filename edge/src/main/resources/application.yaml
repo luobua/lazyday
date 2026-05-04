@@ -1,0 +1,8 @@
+server:
+  port: ${EDGE_SERVER_PORT:8081}
+
+edge:
+  backend-ws-url: ${EDGE_BACKEND_WS_URL:ws://127.0.0.1:8080}
+  heartbeat-interval: ${EDGE_HEARTBEAT_INTERVAL:15s}
+  initial-backoff: ${EDGE_INITIAL_BACKOFF:1s}
+  max-backoff: ${EDGE_MAX_BACKOFF:30s}

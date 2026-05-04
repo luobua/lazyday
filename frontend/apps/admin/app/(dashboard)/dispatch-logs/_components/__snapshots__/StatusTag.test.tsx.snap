@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`StatusTag > renders stable tags for all dispatch statuses 1`] = `
+<DocumentFragment>
+  <span
+    class="ant-tag ant-tag-default css-dev-only-do-not-override-mncuj7"
+  >
+    等待发送
+  </span>
+  <span
+    class="ant-tag ant-tag-processing css-dev-only-do-not-override-mncuj7"
+  >
+    已发送
+  </span>
+  <span
+    class="ant-tag ant-tag-success css-dev-only-do-not-override-mncuj7"
+  >
+    已确认
+  </span>
+  <span
+    class="ant-tag ant-tag-error css-dev-only-do-not-override-mncuj7"
+  >
+    失败
+  </span>
+  <span
+    class="ant-tag ant-tag-warning css-dev-only-do-not-override-mncuj7"
+  >
+    超时
+  </span>
+</DocumentFragment>
+`;

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Form, Input, Button, Checkbox, Typography, App } from 'antd';
+import { Form, Input, Button, Checkbox, App } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useAdminLogin } from '@/hooks/use-auth';

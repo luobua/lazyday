@@ -316,3 +316,33 @@ export interface WorkflowEdge {
   source_handle?: string;
   label?: string;
 }
+
+export type DispatchStatus = 'pending' | 'sent' | 'acked' | 'failed' | 'timeout';
+export type DispatchType = 'CONFIG_UPDATE' | 'ACK' | 'HEARTBEAT';
+
+export interface DispatchLog {
+  msgId: string;
+  tenantId: number;
+  type: DispatchType | string;
+  payload: unknown;
+  status: DispatchStatus;
+  lastError?: string | null;
+  createdTime: string;
+  ackedTime?: string | null;
+}
+
+export interface DispatchLogQuery {
+  tenantId?: number;
+  status?: DispatchStatus[];
+  from?: string;
+  to?: string;
+  msgId?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface EdgeStatus {
+  connected: boolean;
+  sessionCount: number;
+  lastSeenAgoMs: number | null;
+}

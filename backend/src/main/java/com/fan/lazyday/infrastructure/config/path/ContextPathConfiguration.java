@@ -31,6 +31,7 @@ public class ContextPathConfiguration implements WebFluxConfigurer {
         );
         configure.addPathPrefix(serviceProperties.getInternalContextPathV1(), controllerType ->
                 controllerType.isAnnotationPresent(RequestMappingInternal.class)
+                        || controllerType.isAnnotationPresent(RequestMappingInternalV1.class)
         );
     }
 }

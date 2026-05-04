@@ -25,4 +25,5 @@ export {
   adminAgentApi,
   adminWorkflowApi,
   adminBrainConfigApi,
+  dispatchApi,
 } from './admin';

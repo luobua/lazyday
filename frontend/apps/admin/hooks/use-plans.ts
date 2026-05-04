@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminPlanApi } from '@lazyday/api-client';
 import type {
   CreateQuotaPlanRequest,
-  QuotaPlan,
   UpdateQuotaPlanRequest,
 } from '@lazyday/types';
 

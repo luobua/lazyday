@@ -13,6 +13,7 @@ import {
   ApartmentOutlined,
   SettingOutlined,
   CloudOutlined,
+  ThunderboltOutlined,
   UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -20,6 +21,7 @@ import {
 } from '@ant-design/icons';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAdminLogout } from '@/hooks/use-auth';
+import { EdgeStatusBadge } from './_components/EdgeStatusBadge';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -69,6 +71,11 @@ const aiItems: MenuProps['items'] = [
     key: '/brain-configs',
     icon: <CloudOutlined />,
     label: '配置下发',
+  },
+  {
+    key: '/dispatch-logs',
+    icon: <ThunderboltOutlined />,
+    label: 'Dispatch Logs',
   },
 ];
 
@@ -157,12 +164,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div style={{ cursor: 'pointer', fontSize: 18 }} onClick={() => setCollapsed(!collapsed)}>
             {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           </div>
-          <Dropdown menu={{ items: userMenuItems, onClick: ({ key }) => { if (key === 'logout') onLogout(); } }} placement="bottomRight">
-            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar size="small" style={{ background: '#722ed1' }} icon={<UserOutlined />} />
-              <Text>管理员</Text>
-            </div>
-          </Dropdown>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <EdgeStatusBadge />
+            <Dropdown menu={{ items: userMenuItems, onClick: ({ key }) => { if (key === 'logout') onLogout(); } }} placement="bottomRight">
+              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar size="small" style={{ background: '#722ed1' }} icon={<UserOutlined />} />
+                <Text>管理员</Text>
+              </div>
+            </Dropdown>
+          </div>
         </Header>
         <Content className="dashboard-content" key={pathname}>
           {children}

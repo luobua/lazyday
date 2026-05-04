@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlywayMigrationIntegrationTest {
 
     @Test
-    @DisplayName("spring-boot:run 等价启动可完成 V4 迁移并创建关键表、分区与索引")
-    void applicationStartup_shouldApplyV4Migration() throws Exception {
+    @DisplayName("spring-boot:run 等价启动可完成 V5 迁移并创建关键表、分区与索引")
+    void applicationStartup_shouldApplyV5Migration() throws Exception {
         String dbName = PostgresTestDatabaseSupport.randomDatabaseName("lazyday_phase2a_startup");
         PostgresTestDatabaseSupport.createDatabase(dbName);
 
@@ -51,12 +51,16 @@ class FlywayMigrationIntegrationTest {
             assertThat(tableExists(dbName, "t_call_log")).isTrue();
             assertThat(tableExists(dbName, "t_webhook_config")).isTrue();
             assertThat(tableExists(dbName, "t_webhook_event")).isTrue();
+            assertThat(tableExists(dbName, "t_brain_dispatch_log")).isTrue();
             assertThat(tableExists(dbName, partitionName(currentMonth))).isTrue();
             assertThat(tableExists(dbName, partitionName(nextMonth))).isTrue();
             assertThat(columnType(dbName, "t_webhook_event", "payload")).isEqualTo("jsonb");
+            assertThat(columnType(dbName, "t_brain_dispatch_log", "payload")).isEqualTo("jsonb");
             assertThat(indexExists(dbName, "idx_webhook_config_tenant")).isTrue();
             assertThat(indexExists(dbName, "idx_webhook_event_dispatch")).isTrue();
             assertThat(indexExists(dbName, "idx_webhook_event_tenant_created")).isTrue();
+            assertThat(indexExists(dbName, "uk_brain_dispatch_log_msg_id")).isTrue();
+            assertThat(indexExists(dbName, "idx_brain_dispatch_log_tenant_status_created")).isTrue();
             assertThat(countRows(dbName, "t_tenant_quota")).isEqualTo(countRows(dbName, "t_tenant"));
             assertThat(platformTenantPlanName(dbName)).isEqualTo("Free");
         }
