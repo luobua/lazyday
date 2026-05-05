@@ -3,13 +3,13 @@ package com.fan.lazyday.domain.braindispatch.repository;
 import com.fan.lazyday.domain.braindispatch.entity.BrainDispatchLogEntity;
 import com.fan.lazyday.domain.braindispatch.entity.BrainDispatchStatus;
 import com.fan.lazyday.domain.braindispatch.po.BrainDispatchLogPO;
+import io.r2dbc.spi.Row;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.relational.core.query.Criteria;
 import org.springframework.data.relational.core.query.Query;
 import org.springframework.r2dbc.core.DatabaseClient;
@@ -58,7 +58,18 @@ public class BrainDispatchLogRepository {
     }
 
     public Mono<BrainDispatchLogPO> findByMsgId(String msgId) {
-        return r2dbcEntityTemplate.selectOne(query(where("msg_id").is(msgId)), BrainDispatchLogEntity.PO_CLASS);
+        String sql = """
+                SELECT id, msg_id, tenant_id, type, payload::text AS payload_str,
+                       status, last_error, create_user, create_time,
+                       update_user, update_time, acked_time
+                FROM t_brain_dispatch_log
+                WHERE msg_id = :msgId
+                LIMIT 1
+                """;
+        return databaseClient.sql(sql)
+                .bind("msgId", msgId)
+                .map((row, meta) -> mapRow(row))
+                .one();
     }
 
     public Mono<Long> updateStatus(BrainDispatchLogPO log, BrainDispatchStatus... expectedStatuses) {
@@ -79,11 +90,18 @@ public class BrainDispatchLogRepository {
     }
 
     public Flux<BrainDispatchLogPO> findSentBefore(Instant threshold) {
-        return r2dbcEntityTemplate.select(
-                query(where("status").is(BrainDispatchStatus.SENT.value())
-                        .and("create_time").lessThanOrEquals(threshold)),
-                BrainDispatchLogEntity.PO_CLASS
-        );
+        String sql = """
+                SELECT id, msg_id, tenant_id, type, payload::text AS payload_str,
+                       status, last_error, create_user, create_time,
+                       update_user, update_time, acked_time
+                FROM t_brain_dispatch_log
+                WHERE status = 'sent'
+                  AND create_time <= :threshold
+                """;
+        return databaseClient.sql(sql)
+                .bind("threshold", threshold)
+                .map((row, meta) -> mapRow(row))
+                .all();
     }
 
     public Mono<Long> markTimeoutBefore(Instant threshold) {
@@ -108,41 +126,78 @@ public class BrainDispatchLogRepository {
                                                    String msgId,
                                                    int page,
                                                    int size) {
-        List<Criteria> criteria = buildCriteria(tenantId, statuses, from, to, msgId);
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "create_time"));
-        Query baseQuery = Query.query(Criteria.from(criteria));
-        return Mono.zip(
-                        r2dbcEntityTemplate.select(baseQuery.with(pageable), BrainDispatchLogEntity.PO_CLASS).collectList(),
-                        r2dbcEntityTemplate.count(baseQuery, BrainDispatchLogEntity.PO_CLASS)
-                )
-                .map(tuple -> new PageImpl<>(tuple.getT1(), pageable, tuple.getT2()));
-    }
-
-    private List<Criteria> buildCriteria(Long tenantId,
-                                         List<String> statuses,
-                                         Instant from,
-                                         Instant to,
-                                         String msgId) {
-        List<Criteria> criteria = new ArrayList<>();
-        if (tenantId != null) {
-            criteria.add(Criteria.where("tenant_id").is(tenantId));
-        }
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        if (tenantId != null) where.append(" AND tenant_id = :tenantId");
         if (statuses != null && !statuses.isEmpty()) {
-            criteria.add(Criteria.where("status").in(statuses));
+            where.append(" AND status IN (");
+            for (int i = 0; i < statuses.size(); i++) {
+                where.append(i == 0 ? ":s" + i : ", :s" + i);
+            }
+            where.append(")");
+        }
+        if (from != null) where.append(" AND create_time >= :from");
+        if (to != null) where.append(" AND create_time <= :to");
+        if (msgId != null && !msgId.isBlank()) where.append(" AND msg_id = :msgId");
+
+        String countSql = "SELECT COUNT(*) FROM t_brain_dispatch_log" + where;
+        String dataSql = "SELECT id, msg_id, tenant_id, type, payload::text AS payload_str," +
+                " status, last_error, create_user, create_time," +
+                " update_user, update_time, acked_time" +
+                " FROM t_brain_dispatch_log" + where +
+                " ORDER BY create_time DESC LIMIT :limit OFFSET :offset";
+
+        Pageable pageable = PageRequest.of(page, size);
+        int offset = page * size;
+
+        DatabaseClient.GenericExecuteSpec countSpec = databaseClient.sql(countSql);
+        DatabaseClient.GenericExecuteSpec dataSpec = databaseClient.sql(dataSql);
+
+        if (tenantId != null) {
+            countSpec = countSpec.bind("tenantId", tenantId);
+            dataSpec = dataSpec.bind("tenantId", tenantId);
+        }
+        if (statuses != null) {
+            for (int i = 0; i < statuses.size(); i++) {
+                countSpec = countSpec.bind("s" + i, statuses.get(i));
+                dataSpec = dataSpec.bind("s" + i, statuses.get(i));
+            }
         }
         if (from != null) {
-            criteria.add(Criteria.where("create_time").greaterThanOrEquals(from));
+            countSpec = countSpec.bind("from", from);
+            dataSpec = dataSpec.bind("from", from);
         }
         if (to != null) {
-            criteria.add(Criteria.where("create_time").lessThanOrEquals(to));
+            countSpec = countSpec.bind("to", to);
+            dataSpec = dataSpec.bind("to", to);
         }
         if (msgId != null && !msgId.isBlank()) {
-            criteria.add(Criteria.where("msg_id").is(msgId));
+            countSpec = countSpec.bind("msgId", msgId);
+            dataSpec = dataSpec.bind("msgId", msgId);
         }
-        if (criteria.isEmpty()) {
-            criteria.add(Criteria.empty());
-        }
-        return criteria;
+        dataSpec = dataSpec.bind("limit", size).bind("offset", offset);
+
+        DatabaseClient.GenericExecuteSpec finalCountSpec = countSpec;
+        DatabaseClient.GenericExecuteSpec finalDataSpec = dataSpec;
+
+        return Mono.zip(
+                finalDataSpec.map((row, meta) -> mapRow(row)).all().collectList(),
+                finalCountSpec.map((row, meta) -> row.get(0, Long.class)).one().defaultIfEmpty(0L)
+        ).map(tuple -> new PageImpl<>(tuple.getT1(), pageable, tuple.getT2()));
+    }
+
+    private BrainDispatchLogPO mapRow(Row row) {
+        BrainDispatchLogPO po = new BrainDispatchLogPO()
+                .setId(row.get("id", Long.class))
+                .setMsgId(row.get("msg_id", String.class))
+                .setTenantId(row.get("tenant_id", Long.class))
+                .setType(row.get("type", String.class))
+                .setPayload(row.get("payload_str", String.class))
+                .setStatus(row.get("status", String.class))
+                .setLastError(row.get("last_error", String.class))
+                .setAckedTime(row.get("acked_time", Instant.class));
+        po.setCreateTime(row.get("create_time", Instant.class));
+        po.setUpdateTime(row.get("update_time", Instant.class));
+        return po;
     }
 
     public static BrainDispatchLogPO newPending(Long id,

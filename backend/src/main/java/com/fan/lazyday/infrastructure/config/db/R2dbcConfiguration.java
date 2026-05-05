@@ -2,6 +2,7 @@ package com.fan.lazyday.infrastructure.config.db;
 
 
 import com.fan.lazyday.infrastructure.config.db.convert.JsonConverter;
+import com.fan.lazyday.infrastructure.config.db.convert.JsonToStringConverter;
 import com.fan.lazyday.infrastructure.config.db.convert.UUIDConverter;
 import io.r2dbc.spi.ConnectionFactory;
 import java.util.ArrayList;
@@ -45,7 +46,7 @@ public class R2dbcConfiguration {
 
     public static class CustomR2dbcCustomConversions extends R2dbcCustomConversions {
         public final List<Object> CUSTOM_CONVERTERS = new ArrayList();
-        private static final Collection<?> DEFAULT_CONVERTERS = Arrays.asList(new JsonConverter(), new UUIDConverter());
+        private static final Collection<?> DEFAULT_CONVERTERS = Arrays.asList(new JsonConverter(), new JsonToStringConverter(), new UUIDConverter());
 
         public CustomR2dbcCustomConversions(CustomConversions.StoreConversions storeConversions, Collection<?> converters) {
             super(storeConversions, converters);

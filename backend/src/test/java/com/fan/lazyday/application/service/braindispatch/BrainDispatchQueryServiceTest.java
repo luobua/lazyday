@@ -34,8 +34,9 @@ class BrainDispatchQueryServiceTest {
 
         StepVerifier.create(service.getLog("1888"))
                 .assertNext(response -> {
-                    assertThat(response.getPayload().get("hello").asText()).isEqualTo("edge");
-                    assertThat(response.getPayload().get("nested").get("value").asInt()).isEqualTo(42);
+                    assertThat(response.getPayload()).contains("\"hello\"");
+                    assertThat(response.getPayload()).contains("edge");
+                    assertThat(response.getPayload()).contains("42");
                 })
                 .verifyComplete();
     }

@@ -5,8 +5,6 @@ import com.fan.lazyday.domain.braindispatch.repository.BrainDispatchLogRepositor
 import com.fan.lazyday.infrastructure.ws.EdgeConnectionRegistry;
 import com.fan.lazyday.interfaces.response.BrainDispatchLogResponse;
 import com.fan.lazyday.interfaces.response.EdgeStatusResponse;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
@@ -21,7 +19,6 @@ public class BrainDispatchQueryService {
 
     private final BrainDispatchLogRepository repository;
     private final EdgeConnectionRegistry edgeConnectionRegistry;
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     public Mono<Page<BrainDispatchLogResponse>> pageLogs(Long tenantId,
                                                          List<String> statuses,
@@ -51,7 +48,7 @@ public class BrainDispatchQueryService {
         response.setMsgId(po.getMsgId());
         response.setTenantId(po.getTenantId());
         response.setType(po.getType());
-        response.setPayload(readPayload(po.getPayload()));
+        response.setPayload(po.getPayload());
         response.setStatus(po.getStatus());
         response.setLastError(po.getLastError());
         response.setCreatedTime(po.getCreateTime());
@@ -59,12 +56,4 @@ public class BrainDispatchQueryService {
         return response;
     }
 
-    private JsonNode readPayload(String payload) {
-        try {
-            if (payload == null || payload.isBlank()) return null;
-            return objectMapper.readTree(payload);
-        } catch (Exception ex) {
-            throw new IllegalStateException("Failed to parse brain dispatch payload", ex);
-        }
-    }
 }

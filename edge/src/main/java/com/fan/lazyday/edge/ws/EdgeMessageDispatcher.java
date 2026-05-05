@@ -2,6 +2,7 @@ package com.fan.lazyday.edge.ws;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
@@ -13,6 +14,7 @@ public class EdgeMessageDispatcher {
     private final ObjectMapper objectMapper;
     private final MessageIdLru messageIdLru;
 
+    @Autowired
     public EdgeMessageDispatcher(ObjectMapper objectMapper) {
         this(objectMapper, new MessageIdLru(1024));
     }
